@@ -1,9 +1,9 @@
-Hyperlane
+A little bit about our solution to Challenge #2 : Track #2 : we call it Hyperlane!
 
 Launch schedules, weather forecasts and viewing information in one dashboard.
-We built Hyperlane for the Mission Acomplished hackathon as a team of three second-year Computer Science students. It brings together upcoming launches, weather at the launch site and an interactive globe to help people explore a launch and understand where they might be able to see it.
+We built Hyperlane for the Mission Acomplished hackathon as a team of three, second-year Computer Science students (who were inspired by Star Wars). It brings together upcoming launches, weather at the launch site and an interactive globe to help people explore a launch and understand where they might be able to see it.
 
-What it does
+What it does :
 
 - Lists upcoming launches using live launch data.
 - Shows the selected mission's launch window and countdown.
@@ -13,7 +13,7 @@ What it does
 - Shows estimated viewing areas and nearby viewing spots.
 - Includes demo controls for exploring different launch sites, rockets and orbits.
 
-Who worked on what
+Who worked on what :
 
 Justin Osborne — Weather and visibility
 
@@ -25,7 +25,7 @@ Justin Osborne — Weather and visibility
 - Developed the initial visibility calculations using rocket altitude and Earth's curvature.
 - Helped integrate the team's files, organize the source folders and fix import paths.
 
-Colby — Dashboard and 3D visualization
+Colby — Dashboard and 3D visualization : 
 
 - Built the dashboard layout, styling and interactive controls.
 - Created the globe visualization and rocket models.
@@ -34,7 +34,8 @@ Colby — Dashboard and 3D visualization
 - Added viewing-spot cards, map pins and camera controls.
 - Connected the weather results to the dashboard display and visualization.
 
-Yosry — Live launch data
+Yosry — Live launch data : 
+
 - Built the API module for fetching upcoming launches from The Space Devs.
 - Extracted mission names, launch windows and launch-pad coordinates for the dashboard.
 - Provided the live launch data used by the upcoming-launch list and countdown.
