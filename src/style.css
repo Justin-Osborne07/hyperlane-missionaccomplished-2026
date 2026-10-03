@@ -1,0 +1,58 @@
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #000;
+  color: #e8eef6;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+#app {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  height: 100%;
+}
+
+#globe {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#panel {
+  overflow-y: auto;
+  padding: 20px;
+  background: #0a1424;
+  border-left: 1px solid #1d2c44;
+}
+
+#panel h1 { margin: 0 0 16px; font-size: 22px; }
+.slot { padding: 14px 0; border-top: 1px solid #1d2c44; }
+.slot h2 { margin: 0 0 8px; font-size: 15px; }
+.slot p { margin: 4px 0; font-size: 14px; color: #b9c6d6; }
+.placeholder { font-style: italic; opacity: 0.6; }
+
+.dev button, .dev select {
+  display: block;
+  width: 100%;
+  margin: 6px 0;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: #e8eef6;
+  background: #15243b;
+  border: 1px solid #2a3f5f;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.dev button:hover { background: #1c3150; }
+.dev button:focus-visible, .dev select:focus-visible { outline: 2px solid #7fb8ff; outline-offset: 2px; }
+.dev label { display: block; margin-top: 8px; font-size: 13px; color: #b9c6d6; }
+
+/* Phones: globe on top, panel below */
+@media (max-width: 760px) {
+  #app { grid-template-columns: 1fr; grid-template-rows: 60vh auto; height: auto; }
+  #globe { height: 60vh; }
+  #panel { border-left: none; border-top: 1px solid #1d2c44; }
+}

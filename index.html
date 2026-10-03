@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Launch Watcher</title>
+  </head>
+  <body>
+    <div id="app">
+      <main id="globe" aria-label="3D globe showing the launch trajectory"></main>
+
+      <aside id="panel">
+        <h1>Launch Watcher</h1>
+
+        <!-- Yosry mounts the countdown here -->
+        <section id="countdown-slot" class="slot"></section>
+
+        <!-- Yosry mounts the launch info / launch list here -->
+        <section id="launch-info-slot" class="slot"></section>
+
+        <!-- Justin mounts the weather card here -->
+        <section id="weather-slot" class="slot"></section>
+
+        <!-- Colby's dev controls (remove or restyle later) -->
+        <section class="slot dev">
+          <h2>Globe controls</h2>
+          <button id="replay">Replay ascent</button>
+          <button id="toggle-zones">Show viewing zones</button>
+          <label>
+            Test weather colour
+            <select id="weather-test">
+              <option value="green">Green</option>
+              <option value="yellow">Yellow</option>
+              <option value="red">Red</option>
+            </select>
+          </label>
+        </section>
+      </aside>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
