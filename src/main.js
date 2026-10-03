@@ -27,29 +27,29 @@
 
 import './style.css';
 
-import { createGlobe } from './globe.js';
-import { ROCKETS, rocketFor, findRocket } from './rockets.js';
+import { createGlobe } from './visualization/globe.js';
+import { ROCKETS, rocketFor, findRocket } from './visualization/rockets.js';
 import { startCountdown } from './placeholders/countdown.js';
 import { renderWeather } from './placeholders/weather-card.js';
 
 // Justin's code
-import { launchPads } from './launch-pads.js';
-import { getWeather } from './weather.js';
-import { mockWeather as testWeather } from './mock-weather.js';
+import { launchPads } from './launches/launch-pads.js';
+import { getWeather } from './weather/weather.js';
+import { mockWeather as testWeather } from './weather/mock-weather.js';
 
 // Where to watch
-import { getViewingAreas, viewQuality, distanceKm } from './viewing-areas.js';
-import { viewingSpots, siteNotes } from './viewing-spots.js';
+import { getViewingAreas, viewQuality, distanceKm } from './launches/viewing-areas.js';
+import { viewingSpots, siteNotes } from './launches/viewing-spots.js';
 
-// Yosry's real launches (through the adapter, which adds caching)
-import { loadUpcomingLaunches } from './launch-adapter.js';
+// Real launches through the caching adapter
+import { loadUpcomingLaunches } from './launches/launch-adapter.js';
 
-// Still mock: demo launches, and the flight path until Yosry's trajectory.js is ready
+// Demo launches and temporary flight paths
 import {
-  ORBITS,
-  buildDemoLaunch,
-  makeMockTrajectory,
-} from './mock-data.js';
+    ORBITS,
+    buildDemoLaunch,
+    makeMockTrajectory,
+} from './launches/mock-data.js';
 
 
 // =============================================================================
