@@ -6,7 +6,7 @@
 //   1. Data and settings
 //   2. The ascent timeline (bottom of the screen)
 //   3. The globe
-//   4. Upcoming launches list + demo pickers (side panel)
+//   4. Demo pickers and side panel tabs
 //   5. selectLaunch(): switches the whole page to a new launch
 //   6. Buttons and developer tools
 //
@@ -281,24 +281,24 @@ if (reduceMotion) {
 
 
 // =============================================================================
-// 4. LAUNCH SITE + ORBIT PICKERS (side panel)
+// 4. DEMO LAUNCH PICKERS (side panel, Overview tab)
 // =============================================================================
 
-// One button per launch site. aria-pressed marks the selected one,
-// which the CSS uses to highlight it.
+// Launch site dropdown. There are a lot of sites now, so a dropdown takes
+// far less space than a button for each.
+//
+// In live mode (a real launch is showing) nothing is selected, so the
+// dropdown shows "Choose a site" instead.
 function drawSitePicker() {
 
-  const buttons = launchPads.map((pad) => {
+  const options = launchPads.map((pad) =>
+    `<option value="${pad.id}">${shortName(pad.name)}</option>`
+  );
 
-    const pressed = state.mode === 'demo' && pad.id === state.pad.id;
+  $('site-select').innerHTML =
+    '<option value="" disabled>Choose a site</option>' + options.join('');
 
-    return `
-      <button class="choice" data-pad="${pad.id}" aria-pressed="${pressed}">
-        ${shortName(pad.name)}
-      </button>`;
-  });
-
-  $('site-picker').innerHTML = buttons.join('');
+  $('site-select').value = state.mode === 'demo' ? state.pad.id : '';
 }
 
 
@@ -319,35 +319,24 @@ function drawOrbitPicker() {
 }
 
 
-// One button per rocket model (Falcon 9, Falcon Heavy, SLS, Saturn V, Starship)
+// Rocket dropdown (Falcon 9, Falcon Heavy, SLS, Saturn V, Starship)
 function drawRocketPicker() {
 
-  const buttons = ROCKETS.map((rocket) => {
+  const options = ROCKETS.map((rocket) =>
+    `<option value="${rocket.id}">${rocket.name}</option>`
+  );
 
-    const pressed = state.mode === 'demo' && rocket.id === state.rocket.id;
+  $('rocket-select').innerHTML =
+    '<option value="" disabled>Choose a rocket</option>' + options.join('');
 
-    return `
-      <button class="choice" data-rocket="${rocket.id}" aria-pressed="${pressed}">
-        ${rocket.name}
-      </button>`;
-  });
-
-  $('rocket-picker').innerHTML = buttons.join('');
+  $('rocket-select').value = state.mode === 'demo' ? state.rocket.id : '';
 }
 
 
-// Clicking a site button. We listen on the whole picker and check which
-// button was clicked ("event delegation"), because the buttons get redrawn.
-$('site-picker').addEventListener('click', (e) => {
-
-  const button = e.target.closest('[data-pad]');
-
-  if (!button) {
-    return;
-  }
-
+// Choosing a site from the dropdown switches to a demo launch there
+$('site-select').addEventListener('change', (e) => {
   state.mode = 'demo';
-  state.pad = launchPads.find((p) => p.id === button.dataset.pad);
+  state.pad = launchPads.find((p) => p.id === e.target.value);
   selectLaunch();
 });
 
@@ -367,19 +356,72 @@ $('orbit-picker').addEventListener('click', (e) => {
 });
 
 
-// Clicking a rocket button
-$('rocket-picker').addEventListener('click', (e) => {
+// Choosing a rocket from the dropdown
+$('rocket-select').addEventListener('change', (e) => {
+  state.mode = 'demo';
+  state.rocket = ROCKETS.find((r) => r.id === e.target.value);
+  selectLaunch();
+});
 
-  const button = e.target.closest('[data-rocket]');
 
-  if (!button) {
+// =============================================================================
+// SIDE PANEL TABS
+// -----------------------------------------------------------------------------
+// The panel is split into three tabs so it isn't one long crowded list:
+//
+//   Overview:  the demo launch pickers and the launch weather
+//   Launches:  real upcoming launches
+//   Watch:     viewing areas legend and viewing spots
+//
+// Each tab button has data-tab="..." matching a panel with id="tab-...".
+// Only the chosen panel is shown; the others get the "hidden" attribute.
+// =============================================================================
+
+const tabButtons = [...document.querySelectorAll('[role="tab"]')];
+
+function showTab(name) {
+
+  for (const button of tabButtons) {
+
+    const active = button.dataset.tab === name;
+
+    // aria-selected tells screen readers (and our CSS) which tab is open
+    button.setAttribute('aria-selected', String(active));
+
+    // Only the open tab can be reached with the Tab key; arrows move between tabs
+    button.tabIndex = active ? 0 : -1;
+
+    $(`tab-${button.dataset.tab}`).hidden = !active;
+  }
+
+  // Start each tab at the top
+  $('panel').scrollTop = 0;
+}
+
+
+// Clicking a tab
+for (const button of tabButtons) {
+  button.addEventListener('click', () => showTab(button.dataset.tab));
+}
+
+
+// Left / right arrow keys move between tabs (standard keyboard behaviour for tabs)
+$('tabs').addEventListener('keydown', (e) => {
+
+  if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') {
     return;
   }
 
-  state.mode = 'demo';
-  state.rocket = ROCKETS.find((r) => r.id === button.dataset.rocket);
-  selectLaunch();
+  const current = tabButtons.findIndex((b) => b.getAttribute('aria-selected') === 'true');
+  const step = e.key === 'ArrowRight' ? 1 : -1;
+  const next = tabButtons[(current + step + tabButtons.length) % tabButtons.length];
+
+  showTab(next.dataset.tab);
+  next.focus();
 });
+
+
+showTab('overview');
 
 
 // =============================================================================
@@ -476,7 +518,7 @@ function selectLaunch() {
   });
 
 
-  // --- Mission details (side panel) ---
+  // --- Mission details (above the timeline) ---
 
   const missionRows = [
     ['Rocket', launch.rocket],
@@ -495,9 +537,16 @@ function selectLaunch() {
     missionRows.push(['3D model', 'Falcon 9 (stand-in)']);
   }
 
-  // <dt> = the label, <dd> = the value
+  // Shown above the timeline as a row of small "label over value" pairs.
+  // Each pair is wrapped in a <div> so it stays together when the row wraps.
+  // <dt> = the label, <dd> = the value. The title shows the full text on
+  // hover, in case a long launch site name gets cut off with "…".
   $('mission-details').innerHTML = missionRows
-    .map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`)
+    .map(([label, value]) => `
+      <div class="mission-item">
+        <dt>${label}</dt>
+        <dd title="${value}">${value}</dd>
+      </div>`)
     .join('');
 
 
@@ -663,6 +712,10 @@ $('spot-list').addEventListener('click', (e) => {
 function focusSpot(spot) {
   globe.flyToSpot(spot);
   $('back-to-launch').hidden = false;
+
+  // Open the Watch tab so the spot list and "Back" button are in view
+  // (useful when the spot was clicked on the globe instead of in the list)
+  showTab('watch');
 }
 
 

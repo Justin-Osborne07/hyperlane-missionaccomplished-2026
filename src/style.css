@@ -168,11 +168,50 @@ html, body {
   display: grid;
   grid-template-columns: 1fr auto;
   grid-template-areas:
+    "mission mission"
     "head head"
     "track replay";
   column-gap: 28px;
   row-gap: 10px;
   align-items: start;
+}
+
+/* ---------- Mission details strip (above the timeline header) ----------
+   A row of small "label over value" pairs floating over the globe, e.g.
+     Rocket      Launch site          Target orbit   ...
+     Falcon 9    SLC-40, Cape ...     Low Earth ...
+   It wraps onto a second line if the window is narrow. */
+.mission-strip {
+  grid-area: mission;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 0 0 8px;
+
+  /* keeps the text readable over the bright Earth */
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8);
+}
+
+/* One label + value pair */
+.mission-item {
+  min-width: 0;
+}
+
+/* The label: small and quiet */
+.mission-item dt {
+  color: var(--mist);
+  font-size: 12px;
+}
+
+/* The value: brighter, cut off with "…" if it's very long */
+.mission-item dd {
+  margin: 0;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
 }
 
 .flight-head {
@@ -305,7 +344,10 @@ html, body {
 
   /* scrolls if the content is taller than the screen */
   overflow-y: auto;
-  padding: 30px 30px 40px;
+
+  /* No top padding: the pinned header (.panel-top) provides it, so the
+     header can sit flush against the top with nothing showing above it */
+  padding: 0 30px 40px;
   background: var(--panel);
 
   /* frosted-glass effect over the globe */
@@ -317,12 +359,113 @@ html, body {
 }
 
 .brand {
-  margin: 0 0 26px;
+  margin: 0 0 14px;
   font-family: var(--display);
   font-size: 22px;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
+
+/* ---------- Panel top: title + tabs ----------
+   "sticky" pins it to the top while the tab content scrolls underneath.
+   The negative side margins stretch it over the panel's side padding so
+   its solid background covers the full width. */
+.panel-top {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 -30px;
+  padding: 26px 30px 0;
+
+  /* solid, so nothing scrolling underneath shows through */
+  background: rgb(9, 13, 32);
+}
+
+/* The row of tab buttons, with a thin line underneath */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+}
+
+/* One tab button */
+.tabs [role='tab'] {
+  flex: 1;
+  padding: 10px 0 12px;
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--mist);
+  background: none;
+  border: none;
+
+  /* The coloured underline for the open tab sits over the grey line */
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.tabs [role='tab']:hover {
+  color: var(--ice);
+}
+
+.tabs [role='tab']:focus-visible {
+  outline: 2px solid var(--plume);
+  outline-offset: -2px;
+}
+
+/* The open tab: white text, orange underline */
+.tabs [role='tab'][aria-selected='true'] {
+  color: var(--ice);
+  border-bottom-color: var(--plume);
+}
+
+/* No divider line above the first section in each tab
+   (the tabs already have a line underneath) */
+.tab-panel > .block:first-child {
+  border-top: none;
+}
+
+
+/* ---------- Demo launch controls: label on the left, control on the right ---------- */
+
+.field {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.field label,
+.field-label {
+  color: var(--mist);
+  font-size: 14px;
+}
+
+/* Dropdowns (launch site, rocket) */
+.select {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ice);
+  background: rgba(9, 13, 32, 0.9);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.select:hover {
+  border-color: var(--mist);
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--plume);
+  outline-offset: 2px;
+}
+
 
 /* Each section of the panel (Mission, Launch weather, Where to watch) */
 .block {
@@ -577,7 +720,7 @@ html, body {
 .spot {
   display: block;
   width: 100%;
-  padding: 12px 14px;
+  padding: 10px 12px;
   text-align: left;
   font: inherit;
   color: var(--ice);
@@ -806,7 +949,7 @@ html, body {
   #panel {
     position: relative;
     width: auto;
-    padding: 10px var(--edge) 40px;
+    padding: 0 var(--edge) 40px;
     background: transparent;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -815,6 +958,14 @@ html, body {
 
   .brand {
     display: none;
+  }
+
+  /* Tabs bar on phones: match the smaller padding and the page background */
+  .panel-top {
+    top: 0;
+    margin: 0 calc(var(--edge) * -1);
+    padding: 8px var(--edge) 0;
+    background: var(--night);
   }
 }
 
