@@ -1,21 +1,6 @@
-/* =============================================================================
-   style.css  (Colby)
-   -----------------------------------------------------------------------------
-   "Dusk launch" theme: night-sky background, ice-white text, and one warm
-   rocket-exhaust orange ("plume") used only for things that move or are live.
+/* Dusk theme: full-screen globe with floating controls; stacked on mobile. */
 
-   Layout on a computer:
-     - the globe fills the whole screen
-     - the countdown floats in the top-left
-     - the ascent timeline floats along the bottom
-     - the side panel is a frosted-glass strip on the right
-   On phones (narrow screens) everything stacks vertically instead.
-   ============================================================================= */
-
-
-/* ---------- Design tokens ----------
-   Variables (custom properties) used everywhere below. Change a colour here
-   and it updates across the whole page. */
+/* ---------- Design tokens ---------- */
 :root {
   /* page background */
   --night: #04060f;
@@ -46,8 +31,7 @@
   /* space between floating elements and the screen edge */
   --edge: 40px;
 
-  /* Fonts: Saira Condensed for big numbers and headings, Saira for normal text.
-     The names after them are fallbacks if Google Fonts fails to load. */
+  /* Fonts: Saira Condensed for big numbers and headings, Saira for normal text. */
   --display: 'Saira Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
   --text: 'Saira', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
@@ -70,10 +54,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-
-/* ---------- Globe ----------
-   Fixed to fill the screen, but shifted left by half the panel width so the
-   Earth looks centred in the visible area instead of hiding behind the panel. */
+/* ---------- Globe ---------- */
 #globe {
   position: fixed;
   top: 0;
@@ -81,7 +62,6 @@ html, body {
   left: calc(var(--panel-w) / -2);
   width: 100vw;
 }
-
 
 /* ---------- Hero: countdown + mission name (top-left) ---------- */
 .hero {
@@ -118,14 +98,14 @@ html, body {
   white-space: nowrap;
 }
 
-/* The "T−" in front of the numbers: thinner and quieter */
+/* The "Tâˆ’" in front of the numbers: thinner and quieter */
 .countdown-prefix {
   font-weight: 300;
   color: var(--mist);
   margin-right: 0.06em;
 }
 
-/* When the window is open (countdown.js adds "is-live"): hide "T−", turn orange */
+/* When the window is open (countdown.js adds "is-live"): hide "Tâˆ’", turn orange */
 .countdown.is-live .countdown-prefix {
   display: none;
 }
@@ -153,11 +133,7 @@ html, body {
   color: var(--mist);
 }
 
-
-/* ---------- Ascent timeline (bottom) ----------
-   A small grid:
-     row 1: phase name + mission clock (full width)
-     row 2: the track (stretches) + the Replay button (on the right) */
+/* ---------- Ascent timeline (bottom) ---------- */
 .flight {
   position: fixed;
   left: var(--edge);
@@ -231,8 +207,7 @@ html, body {
   inset: 0;
 }
 
-/* One event marker: a dot on the track with its label underneath.
-   transform: translateX(-50%) centres it on its position. */
+/* One event marker: a dot on the track with its label underneath. */
 .event {
   position: absolute;
   top: -5px;
@@ -278,7 +253,6 @@ html, body {
   background: var(--plume);
   border-color: var(--plume);
 }
-
 
 /* ---------- Side panel (right) ---------- */
 #panel {
@@ -347,7 +321,6 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
-
 /* ---------- Launch site + orbit pickers ---------- */
 
 /* Second heading inside the same block ("Target orbit") */
@@ -402,7 +375,6 @@ html, body {
   font-size: 13px;
 }
 
-
 /* ---------- Weather card ---------- */
 .wx-status {
   display: flex;
@@ -442,8 +414,7 @@ html, body {
   margin-top: 2px;
 }
 
-/* Three stat boxes in a row. The 1px gap shows the background colour through,
-   which draws thin divider lines between the boxes. */
+/* Three stat boxes in a row. The 1px gap shows the background colour through, */
 .wx-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -500,7 +471,6 @@ html, body {
   --wx: var(--nogo);
 }
 
-
 /* ---------- Buttons ---------- */
 .btn {
   font: inherit;
@@ -551,7 +521,6 @@ html, body {
   color: var(--night);
 }
 
-
 /* ---------- Developer tools (collapsible, bottom of panel) ---------- */
 .dev {
   margin-top: 8px;
@@ -580,10 +549,7 @@ html, body {
   border-radius: 8px;
 }
 
-
-/* ---------- Phones and narrow windows (860px wide or less) ----------
-   Stop floating things over the globe. Instead: globe on top, timeline under
-   it, then the panel, all in a normal scrolling column. */
+/* ---------- Phones and narrow windows (860px wide or less) ---------- */
 @media (max-width: 860px) {
   :root {
     --edge: 20px;
@@ -616,8 +582,7 @@ html, body {
     font-size: 24px;
   }
 
-  /* Event labels would overlap on a narrow screen, so hide them;
-     the phase name above the track already says which event we're at */
+  /* Event labels would overlap on a narrow screen, so hide them; */
   .event {
     font-size: 0;
   }

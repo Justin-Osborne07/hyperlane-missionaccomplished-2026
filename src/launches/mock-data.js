@@ -1,28 +1,15 @@
-// =============================================================================
-// mock-data.js
-// -----------------------------------------------------------------------------
-// Fake data so everyone can build without waiting on each other.
-//
-// Every object here matches the team's DATA CONTRACT (see the roles PDF).
-// Yosry's and Justin's real functions should return these exact same shapes,
-// so swapping mock -> real is a one-line change in main.js.
-// =============================================================================
+// Demo launch and trajectory data matching the team data contract.
+// Legacy mock exports remain for compatibility with other project files.
 
-
-// Earth's radius in km
 const EARTH_R_KM = 6371;
 
 // Convert degrees <-> radians
 const toRad = (d) => (d * Math.PI) / 180;
 const toDeg = (r) => (r * 180) / Math.PI;
 
-
-// =============================================================================
 // LAUNCH  (Yosry's shape)
-// -----------------------------------------------------------------------------
 // A fake Starlink launch from Cape Canaveral,
 // 3 hours from whenever the page loads.
-// =============================================================================
 
 const ONE_HOUR_MS = 3600 * 1000;
 
@@ -48,13 +35,9 @@ export const mockLaunch = {
   inclination: 45.1,
 };
 
-
-// =============================================================================
 // DEMO LAUNCHES FOR ANY SITE  (temporary, until Yosry's real launch list)
-// -----------------------------------------------------------------------------
 // Builds a launch object (same shape as mockLaunch) for any launch site and
 // target orbit, so we can switch between Justin's launch sites.
-// =============================================================================
 
 // The three orbit types from the challenge brief, with their inclinations
 export const ORBITS = {
@@ -85,12 +68,8 @@ export function buildDemoLaunch(pad, orbitKey = 'LEO', rocketName = 'Falcon 9') 
   };
 }
 
-
-// =============================================================================
 // TRAJECTORY  (Yosry's shape)  ->  [{ t, lat, lon, altKm }, ...]
-// -----------------------------------------------------------------------------
 // TEMPORARY stand-in for Yosry's getTrajectory(launch).
-// =============================================================================
 
 export function makeMockTrajectory(launch, steps = 80) {
 
@@ -98,22 +77,15 @@ export function makeMockTrajectory(launch, steps = 80) {
   const phi = toRad(launch.pad.lat);
   const lambda = toRad(launch.pad.lon);
 
-
-  // Launch direction (azimuth) needed to reach the target inclination:
-  //
-  //     sin(azimuth) = cos(inclination) / cos(latitude)
-  //
-  // Math.max / Math.min clamp the value to [-1, 1] so asin never breaks.
+  // Approximate azimuth: sin(azimuth) = cos(inclination) / cos(latitude).
+  // Clamp the ratio to [-1, 1] for asin.
   const rawRatio = Math.cos(toRad(launch.inclination)) / Math.cos(phi);
   const ratio = Math.max(-1, Math.min(1, rawRatio));
 
-  // There are two directions that reach the same inclination: one heading
-  // north-ish and one heading south-ish. Low orbits (like LEO) head north-east.
-  // Polar and sun-synchronous orbits (above 80°) head south, which is what
-  // real spaceports do so the rocket flies over the ocean.
+  // Use the northward branch for low inclinations and southward above 80 degrees.
+  // This is a demo path, not a site-specific flight corridor.
   const northAz = Math.asin(ratio);
   const az = launch.inclination > 80 ? Math.PI - northAz : northAz;
-
 
   // How far downrange the path goes, in km
   const totalKm = 1800;
@@ -124,7 +96,6 @@ export function makeMockTrajectory(launch, steps = 80) {
   // Seconds from liftoff to orbit (9 minutes)
   const totalT = 540;
 
-
   const points = [];
 
   for (let k = 0; k < steps; k++) {
@@ -132,12 +103,10 @@ export function makeMockTrajectory(launch, steps = 80) {
     // Progress from 0 (liftoff) to 1 (orbit)
     const f = k / (steps - 1);
 
-
     // Distance travelled so far, as an angle on the sphere.
     // Raising f to the power 1.6 makes the rocket move slowly at first
     // and speed up, like a real launch.
     const delta = (totalKm * Math.pow(f, 1.6)) / EARTH_R_KM;
-
 
     // "Destination point" formula: where you end up after travelling
     // distance delta from the pad in direction az
@@ -151,10 +120,8 @@ export function makeMockTrajectory(launch, steps = 80) {
       Math.cos(delta) - Math.sin(phi) * Math.sin(lat2)
     );
 
-
     // Altitude climbs steeply early, then levels off near orbit
     const altKm = totalAlt * (1 - Math.pow(1 - f, 2.5));
-
 
     points.push({
       t: f * totalT,   // seconds after liftoff
@@ -167,13 +134,9 @@ export function makeMockTrajectory(launch, steps = 80) {
   return points;
 }
 
-
 export const mockTrajectory = makeMockTrajectory(mockLaunch);
 
-
-// =============================================================================
 // WEATHER  (Justin's shape)
-// =============================================================================
 
 export const mockWeather = {
 
@@ -196,18 +159,7 @@ export const mockWeather = {
   cape: 50,
 };
 
-
-// =============================================================================
-// VIEWING ZONES  (Justin's shape)  ->  [{ lat, lon, radiusKm, quality }, ...]
-// -----------------------------------------------------------------------------
-// TEMPORARY stand-in for Justin's getViewingZones(trajectory).
-//
-// Picks 4 points along the path and uses the horizon-distance formula
-//
-//     d = sqrt(2 * R * h)
-//
-// to find how far away the rocket is visible at each one.
-// =============================================================================
+// Legacy demo zones retained for compatibility; the dashboard uses visibility.js.
 
 // Which trajectory points to put circles under
 const ZONE_POINTS = [10, 25, 45, 79];

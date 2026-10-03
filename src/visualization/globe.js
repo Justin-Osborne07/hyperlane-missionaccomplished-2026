@@ -1,31 +1,10 @@
-// =============================================================================
-// globe.js  (Colby)
-// -----------------------------------------------------------------------------
-// Everything 3D lives in this file. It uses globe.gl, a library that draws an
-// interactive 3D Earth using three.js (the 3D graphics library underneath).
-//
-// The rest of the app never touches globe.gl directly. Instead it calls the
-// small set of functions returned at the bottom of createGlobe():
-//
-//   setPads(pads)                            -> show every launch site as a clickable label
-//   setRocket(rocket)                        -> choose which 3D rocket model flies
-//   showLaunch(launch, trajectory, weather)  -> draw a launch and animate it
-//   setWeather(rating)                       -> recolour the flight path
-//   replay()                                 -> restart the rocket animation
-//   showZones(zones) / clearZones()          -> viewing-zone circles (bonus)
-//
-// Keeping it this way means the rest of the team can change their code freely
-// without breaking the globe, and vice versa.
-// =============================================================================
-
+// Renders the globe, flight path, viewing zones and staged rocket animation.
+// Other modules use the methods returned by createGlobe().
 
 import Globe from 'globe.gl';
 import * as THREE from 'three';
 
-
-// =============================================================================
 // SETTINGS YOU CAN TWEAK
-// =============================================================================
 
 // Earth's radius in kilometres
 const EARTH_R_KM = 6371;
@@ -62,10 +41,7 @@ const RATING_COLORS = {
 // Earth textures (satellite photo, terrain bumps, starry background) hosted online
 const IMG = 'https://cdn.jsdelivr.net/npm/three-globe/example/img';
 
-
-// =============================================================================
 // SMALL HELPER FUNCTIONS
-// =============================================================================
 
 // Convert degrees <-> radians (JavaScript's Math functions use radians)
 const toRad = (d) => (d * Math.PI) / 180;
@@ -86,35 +62,12 @@ const samePad = (a, b) =>
 // exaggeration from ALT_SCALE.
 const altFromKm = (km) => (km / EARTH_R_KM) * ALT_SCALE;
 
-
-// =============================================================================
-// createGlobe(container, options)
-// -----------------------------------------------------------------------------
-//   container:
-//     the HTML element to draw the globe inside (the #globe div)
-//
-//   options.onTick(simT, tMax):
-//     optional function called every animation frame with the rocket's
-//     current flight time, so other parts of the page (like the ascent
-//     timeline) can stay in sync with the animation.
-//
-//   options.onPadClick(pad):
-//     optional function called when someone clicks a launch site on the globe.
-// =============================================================================
+// createGlobe(container, { onTick, onPadClick })
+// Callbacks report animation time and launch-site clicks.
 
 export function createGlobe(container, { onTick, onPadClick } = {}) {
 
-  // ---------------------------------------------------------------------------
-  // Build the globe
-  // ---------------------------------------------------------------------------
-  // globe.gl uses "method chaining": each .something() call configures one
-  // setting and returns the globe again, so the calls can be stacked.
-  //
-  // Each visual feature is a "layer" (labels, rings, paths, polygons, objects).
-  // For every layer we set:
-  //   - xxxData([...])  : the list of things to draw (starts empty, filled later)
-  //   - accessor functions telling globe.gl where to find lat/lon/colour/etc.
-  //     on each item in that list.
+  // Configure the globe and its label, ring, path and polygon layers.
 
   const globe = Globe()(container)
 
@@ -132,7 +85,6 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     // blue glow around the edge, and how thick it is
     .atmosphereColor('#8fb0ff')
     .atmosphereAltitude(0.18)
-
 
     // --- Launch site labels + dots (every site, clickable) ---
 
@@ -157,7 +109,6 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
       }
     })
 
-
     // --- Pulsing orange rings at the pad (like a radar ping) ---
 
     .ringsData([])
@@ -176,7 +127,6 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
 
     // a new ring every 1.2 seconds
     .ringRepeatPeriod(1200)
-
 
     // --- Flight path (the dashed line) ---
 
@@ -206,7 +156,6 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     // redraw instantly when recoloured
     .pathTransitionDuration(0)
 
-
     // --- Viewing zones (bonus): see-through circles on the ground ---
 
     .polygonsData([])
@@ -224,14 +173,10 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
 
     .polygonsTransitionDuration(300);
 
-
   // The rocket isn't a globe.gl layer: we add it to the 3D scene ourselves
   // (see "The rocket" below), so we can rotate it and split it into stages.
 
-
-  // ---------------------------------------------------------------------------
   // Spin + sizing
-  // ---------------------------------------------------------------------------
 
   // Slowly spin the Earth until a launch is selected
   globe.controls().autoRotate = true;
@@ -247,10 +192,7 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
   window.addEventListener('resize', resize);
   resize();
 
-
-  // ---------------------------------------------------------------------------
   // Internal state (what's currently shown)
-  // ---------------------------------------------------------------------------
 
   let current = {
     launch: null,
@@ -264,11 +206,8 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
   // Every launch site to show on the globe (set with setPads)
   let pads = [];
 
-
-  // ---------------------------------------------------------------------------
   // drawPads()
   // Draw a label for every launch site, highlighting the selected one.
-  // ---------------------------------------------------------------------------
 
   function drawPads() {
 
@@ -294,11 +233,8 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     globe.labelsData(labelItems);
   }
 
-
-  // ---------------------------------------------------------------------------
   // drawPath()
   // Draw (or redraw) the flight path in the colour matching the current weather.
-  // ---------------------------------------------------------------------------
 
   function drawPath() {
 
@@ -315,14 +251,7 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     ]);
   }
 
-
-  // ---------------------------------------------------------------------------
-  // positionAt(trajectory, simT)
-  // Work out where the rocket is at flight time simT (seconds after liftoff).
-  //
-  // The trajectory is a list of points, so we find the two points either side
-  // of simT and blend between them ("linear interpolation").
-  // ---------------------------------------------------------------------------
+  // Interpolate between the trajectory points surrounding simT.
 
   function positionAt(trajectory, simT) {
 
@@ -355,14 +284,9 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     };
   }
 
-
-  // ---------------------------------------------------------------------------
   // playAscent()
   // Run the rocket animation.
-  //
   // requestAnimationFrame calls `frame` about 60 times a second. Each time,
-  // we move the rocket to where it should be right now.
-  // ---------------------------------------------------------------------------
 
   function playAscent() {
 
@@ -406,19 +330,8 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     rafId = requestAnimationFrame(frame);
   }
 
-
-  // ===========================================================================
-  // THE ROCKET
-  // ---------------------------------------------------------------------------
-  // The "rig" holds the current 3D rocket model:
-  //
-  //   root:        a group that moves along the flight path and points the
-  //                rocket in the direction it's travelling
-  //   lower/upper: the two stages (from rockets.js). At stage separation the
-  //                lower stage is detached from root and left to fall away.
-  //   lowerFlame / upperFlame: engine flames, switched on and off by stage
-  //   sep:         where and how the lower stage separated (filled in later)
-  // ===========================================================================
+  // Rocket rig: root moves along the path; lower detaches at separation.
+  // Each stage has a flame, and sep stores the detached stage state.
 
   // Straight up in the model's own coordinates (rockets are built along +Y)
   const UP = new THREE.Vector3(0, 1, 0);
@@ -426,11 +339,8 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
   // The current rocket rig, or null before setRocket() is called
   let rig = null;
 
-
-  // ---------------------------------------------------------------------------
   // buildRig(rocket)
   // Remove the old rocket (if any) and build a new one from rockets.js
-  // ---------------------------------------------------------------------------
 
   function buildRig(rocket) {
 
@@ -476,7 +386,6 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     resetStages();
   }
 
-
   // Free the memory used by a mesh's shape and material
   function disposeMesh(obj) {
     if (obj.isMesh) {
@@ -485,11 +394,8 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     }
   }
 
-
-  // ---------------------------------------------------------------------------
   // resetStages()
   // Put the lower stage back on the rocket (used when the animation loops).
-  // ---------------------------------------------------------------------------
 
   function resetStages() {
 
@@ -510,12 +416,9 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     rig.sep = null;
   }
 
-
-  // ---------------------------------------------------------------------------
   // setStageOpacity(stage, opacity)
   // Fade a stage in or out (1 = solid, 0 = invisible). Skips the flames,
   // which have their own see-through glow.
-  // ---------------------------------------------------------------------------
 
   function setStageOpacity(stage, opacity) {
 
@@ -530,14 +433,9 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     });
   }
 
-
-  // ---------------------------------------------------------------------------
   // separateStages(dir)
   // The moment of stage separation. The lower stage is moved from the rocket
   // into the scene, keeping exactly where it is right now, so it can fall
-  // away on its own while the upper stage keeps flying.
-  //   dir: the direction the rocket is travelling at this moment
-  // ---------------------------------------------------------------------------
 
   function separateStages(dir) {
 
@@ -559,13 +457,9 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     rig.upperFlame.visible = true;
   }
 
-
-  // ---------------------------------------------------------------------------
   // updateRocket(traj, simT, tMax, now)
   // Called every animation frame. Moves the rocket to where it should be at
   // flight time simT, points it the way it's going, handles stage
-  // separation, and makes the flames flicker.
-  // ---------------------------------------------------------------------------
 
   // Reusable vectors (creating new ones 60 times a second wastes memory)
   const posNow = new THREE.Vector3();
@@ -579,7 +473,6 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     if (!rig) {
       return;
     }
-
 
     // --- Where is it now, and where will it be a moment later? ---
 
@@ -598,12 +491,10 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
       .sub(posAhead.copy(globe.getCoords(a.lat, a.lon, a.alt)))
       .normalize();
 
-
     // --- Move the rocket and point its nose along the direction of travel ---
 
     rig.root.position.copy(posNow);
     rig.root.quaternion.setFromUnitVectors(UP, travelDir);
-
 
     // --- Stage separation ---
 
@@ -644,14 +535,12 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
       rig.lower.visible = opacity > 0;
     }
 
-
     // --- Engine shutdown at orbit ---
 
     // Once the rocket reaches orbit (the pause at the end), the engine stops
     if (simT >= tMax) {
       rig.upperFlame.visible = false;
     }
-
 
     // --- Flicker the flames ---
     // Stretch them slightly up and down using a fast wave plus a little randomness
@@ -662,15 +551,7 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     rig.upperFlame.scale.set(1, flicker, 1);
   }
 
-
-  // ---------------------------------------------------------------------------
-  // flyTo(trajectory, ms)
-  // Smoothly move the camera to look at the middle of the flight path.
-  //
-  //   lat - 5   tilts the view slightly so we look "up" the path
-  //   altitude  is zoom (lower = closer)
-  //   ms        is how long the camera move takes
-  // ---------------------------------------------------------------------------
+  // Move the camera toward the middle of the trajectory.
 
   function flyTo(trajectory, ms = 2000) {
 
@@ -682,15 +563,8 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     );
   }
 
-
-  // ---------------------------------------------------------------------------
-  // circleRing(lat, lon, radiusKm)
-  // Build a circle of radiusKm around (lat, lon) as a list of [lon, lat] points.
-  //
-  // You can't just draw a circle in degrees on a sphere, so we walk around the
-  // centre in 64 steps, using the "destination point" formula to find the spot
-  // radiusKm away in each direction (bearing).
-  // ---------------------------------------------------------------------------
+  // Build a geographic circle as [longitude, latitude] points.
+  // Use spherical destination points at evenly spaced bearings.
 
   function circleRing(lat, lon, radiusKm, steps = 64) {
 
@@ -724,17 +598,12 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     return ring;
   }
 
-
-  // ===========================================================================
   // PUBLIC FUNCTIONS
   // The only things the rest of the app can call.
-  // ===========================================================================
 
   return {
 
-    // -------------------------------------------------------------------------
     // Show a launch: pad marker, flight path, rocket animation, camera move.
-    // -------------------------------------------------------------------------
     showLaunch(launch, trajectory, weather) {
 
       current = {
@@ -760,45 +629,30 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
       playAscent();
     },
 
-
-    // -------------------------------------------------------------------------
     // Choose which rocket model flies. rocket: one entry from ROCKETS in rockets.js
-    // -------------------------------------------------------------------------
     setRocket(rocket) {
       buildRig(rocket);
     },
 
-
-    // -------------------------------------------------------------------------
     // Show every launch site on the globe as a clickable label.
     // pads: a list of { id, name, lat, lon }
-    // -------------------------------------------------------------------------
     setPads(newPads) {
       pads = newPads;
       drawPads();
     },
 
-
-    // -------------------------------------------------------------------------
     // Recolour the path when the weather changes: 'green' | 'yellow' | 'red'
-    // -------------------------------------------------------------------------
     setWeather(rating) {
       current.rating = rating;
       drawPath();
     },
 
-
-    // -------------------------------------------------------------------------
     // Restart the rocket animation from liftoff
-    // -------------------------------------------------------------------------
     replay() {
       playAscent();
     },
 
-
-    // -------------------------------------------------------------------------
     // Bonus: draw viewing zones, a list of { lat, lon, radiusKm, quality }
-    // -------------------------------------------------------------------------
     showZones(zones) {
 
       // Sort biggest first, then give each circle a slightly higher altitude.
@@ -824,18 +678,12 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
       globe.polygonsData(features);
     },
 
-
-    // -------------------------------------------------------------------------
     // Remove all viewing-zone circles
-    // -------------------------------------------------------------------------
     clearZones() {
       globe.polygonsData([]);
     },
 
-
-    // -------------------------------------------------------------------------
     // The raw globe.gl object, in case you need a setting not wrapped above
-    // -------------------------------------------------------------------------
     raw: globe,
   };
 }
