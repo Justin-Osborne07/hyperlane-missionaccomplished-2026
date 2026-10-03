@@ -1,58 +1,402 @@
+/* =============================================================================
+   style.css  (Colby)
+   -----------------------------------------------------------------------------
+   "Dusk launch" theme: night-sky background, ice-white text, and one warm
+   rocket-exhaust orange ("plume") used only for things that move or are live.
+
+   Layout on a computer:
+     - the globe fills the whole screen
+     - the countdown floats in the top-left
+     - the ascent timeline floats along the bottom
+     - the side panel is a frosted-glass strip on the right
+   On phones (narrow screens) everything stacks vertically instead.
+   ============================================================================= */
+
+/* ---------- Design tokens ----------
+   Variables (custom properties) used everywhere below. Change a colour here
+   and it updates across the whole page. */
+:root {
+  --night: #04060f;                  /* page background */
+  --panel: rgba(9, 13, 32, 0.78);    /* see-through side panel */
+  --line: rgba(220, 230, 255, 0.12); /* thin divider lines */
+  --ice: #e6ecff;                    /* main text */
+  --mist: #8e9ac2;                   /* secondary / quieter text */
+  --plume: #ffb547;                  /* the one accent colour */
+
+  /* weather rating colours */
+  --go: #3ddc84;
+  --marginal: #e8e15a;
+  --nogo: #ff5a5a;
+
+  --panel-w: 380px; /* side panel width */
+  --edge: 40px;     /* space between floating elements and the screen edge */
+
+  /* Fonts: Saira Condensed for big numbers and headings, Saira for normal text.
+     The names after them are fallbacks if Google Fonts fails to load. */
+  --display: 'Saira Condensed', 'Arial Narrow', 'Roboto Condensed', sans-serif;
+  --text: 'Saira', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* Make width/height include padding and borders (much easier to reason about) */
 * { box-sizing: border-box; }
 
 html, body {
   margin: 0;
   height: 100%;
-  background: #000;
-  color: #e8eef6;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--night);
+  color: var(--ice);
+  font-family: var(--text);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased; /* smoother text on Mac */
 }
 
-#app {
-  display: grid;
-  grid-template-columns: 1fr 340px;
-  height: 100%;
-}
-
+/* ---------- Globe ----------
+   Fixed to fill the screen, but shifted left by half the panel width so the
+   Earth looks centred in the visible area instead of hiding behind the panel. */
 #globe {
-  position: relative;
-  min-height: 0;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--panel-w) / -2);
+  width: 100vw;
+}
+
+/* ---------- Hero: countdown + mission name (top-left) ---------- */
+.hero {
+  position: fixed;
+  top: 32px;
+  left: var(--edge);
+  max-width: 34rem;
+  pointer-events: none; /* clicks pass through to the globe so you can still drag it */
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.7); /* keeps text readable over the bright Earth */
+}
+
+.hero-label {
+  margin: 0 0 4px;
+  color: var(--mist);
+  font-size: 14px;
+}
+
+/* The big countdown numbers */
+.countdown {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(56px, 8vw, 116px); /* scales with window width, between 56 and 116 px */
+  line-height: 0.92;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums; /* every digit the same width, so the clock doesn't jiggle */
+  white-space: nowrap;
+}
+
+/* The "T−" in front of the numbers: thinner and quieter */
+.countdown-prefix {
+  font-weight: 300;
+  color: var(--mist);
+  margin-right: 0.06em;
+}
+
+/* When the window is open (countdown.js adds "is-live"): hide "T−", turn orange */
+.countdown.is-live .countdown-prefix { display: none; }
+.countdown.is-live { color: var(--plume); }
+
+.window-line {
+  margin: 10px 0 22px;
+  color: var(--mist);
+  font-size: 14px;
+}
+
+.mission-name {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.mission-sub {
+  margin: 4px 0 0;
+  color: var(--mist);
+}
+
+/* ---------- Ascent timeline (bottom) ----------
+   A small grid:
+     row 1: phase name + mission clock (full width)
+     row 2: the track (stretches) + the Replay button (on the right) */
+.flight {
+  position: fixed;
+  left: var(--edge);
+  right: calc(var(--panel-w) + var(--edge)); /* stop before the side panel */
+  bottom: 28px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "head head"
+    "track replay";
+  column-gap: 28px;
+  row-gap: 10px;
+  align-items: start;
+}
+
+.flight-head {
+  grid-area: head;
+  display: flex;
+  align-items: baseline; /* line up the bottoms of the two different text sizes */
+  gap: 14px;
+  font-family: var(--display);
+}
+.phase { font-size: 22px; font-weight: 500; }
+.met {
+  font-size: 18px;
+  font-weight: 300;
+  color: var(--mist);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The thin grey line the progress runs along */
+.track {
+  grid-area: track;
+  position: relative; /* so the fill and event dots can be positioned inside it */
+  height: 3px;
+  margin-top: 14px;
+  margin-bottom: 30px; /* room for the event labels underneath */
+  background: var(--line);
+  border-radius: 3px;
+}
+
+/* The orange part that grows as the rocket climbs (width set by main.js) */
+.track-fill {
+  position: absolute;
+  inset: 0 auto 0 0; /* top 0, right auto, bottom 0, left 0 */
+  width: 0%;
+  background: var(--plume);
+  border-radius: 3px;
+  box-shadow: 0 0 12px rgba(255, 181, 71, 0.6); /* soft glow */
+}
+
+.track-events { position: absolute; inset: 0; }
+
+/* One event marker: a dot on the track with its label underneath.
+   transform: translateX(-50%) centres it on its position. */
+.event {
+  position: absolute;
+  top: -5px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--mist);
+  font-size: 12px;
+  white-space: nowrap;
+  transition: color 0.3s;
+}
+/* The dot itself, drawn with a pseudo-element (no extra HTML needed) */
+.event::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  margin-bottom: 7px;
+  border-radius: 50%;
+  background: var(--night);
+  border: 1.5px solid var(--mist);
+  transition: background 0.3s, border-color 0.3s;
+}
+/* First and last labels align to the edges so they don't get cut off */
+.event.first { transform: none; align-items: flex-start; }
+.event.last { transform: translateX(-100%); align-items: flex-end; }
+/* Events the rocket has passed light up orange (main.js adds "passed") */
+.event.passed { color: var(--ice); }
+.event.passed::before { background: var(--plume); border-color: var(--plume); }
+
+/* ---------- Side panel (right) ---------- */
+#panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: var(--panel-w);
+  overflow-y: auto; /* scrolls if the content is taller than the screen */
+  padding: 30px 30px 40px;
+  background: var(--panel);
+  backdrop-filter: blur(18px);         /* frosted-glass effect over the globe */
+  -webkit-backdrop-filter: blur(18px); /* same, for Safari */
+  border-left: 1px solid var(--line);
+}
+
+.brand {
+  margin: 0 0 26px;
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Each section of the panel (Mission, Launch weather, Where to watch) */
+.block { padding: 22px 0; border-top: 1px solid var(--line); }
+.block h2 {
+  margin: 0 0 14px;
+  font-family: var(--display);
+  font-size: 19px;
+  font-weight: 500;
+}
+
+.muted { margin: 0 0 16px; color: var(--mist); font-size: 14px; }
+
+/* Mission details: labels on the left, values right-aligned */
+.details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 18px;
+  margin: 0;
+  font-size: 14px;
+}
+.details dt { color: var(--mist); }
+.details dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- Weather card ---------- */
+.wx-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+/* Glowing status dot. Its colour comes from --wx, set by the wx-green/yellow/red classes below. */
+.wx-dot {
+  width: 14px;
+  height: 14px;
+  flex: none; /* never squash */
+  border-radius: 50%;
+  background: var(--wx);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--wx) 22%, transparent), 0 0 18px var(--wx);
+}
+.wx-title { font-family: var(--display); font-size: 24px; font-weight: 500; line-height: 1.1; }
+.wx-reasons { margin: 0 0 16px; padding: 0; list-style: none; color: var(--mist); font-size: 14px; }
+.wx-reasons li + li { margin-top: 2px; }
+
+/* Three stat boxes in a row. The 1px gap shows the background colour through,
+   which draws thin divider lines between the boxes. */
+.wx-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 10px;
   overflow: hidden;
 }
-
-#panel {
-  overflow-y: auto;
-  padding: 20px;
-  background: #0a1424;
-  border-left: 1px solid #1d2c44;
-}
-
-#panel h1 { margin: 0 0 16px; font-size: 22px; }
-.slot { padding: 14px 0; border-top: 1px solid #1d2c44; }
-.slot h2 { margin: 0 0 8px; font-size: 15px; }
-.slot p { margin: 4px 0; font-size: 14px; color: #b9c6d6; }
-.placeholder { font-style: italic; opacity: 0.6; }
-
-.dev button, .dev select {
+.wx-stat { padding: 10px 12px; background: rgba(9, 13, 32, 0.9); }
+.wx-stat b {
   display: block;
-  width: 100%;
-  margin: 6px 0;
-  padding: 8px 10px;
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.wx-stat span { color: var(--mist); font-size: 12px; }
+
+/* Which colour the dot uses for each rating */
+.wx-green { --wx: var(--go); }
+.wx-yellow { --wx: var(--marginal); }
+.wx-red { --wx: var(--nogo); }
+
+/* ---------- Buttons ---------- */
+.btn {
   font: inherit;
   font-size: 14px;
-  color: #e8eef6;
-  background: #15243b;
-  border: 1px solid #2a3f5f;
-  border-radius: 6px;
+  font-weight: 500;
+  color: var(--ice);
   cursor: pointer;
+  border-radius: 999px; /* fully rounded "pill" shape */
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
-.dev button:hover { background: #1c3150; }
-.dev button:focus-visible, .dev select:focus-visible { outline: 2px solid #7fb8ff; outline-offset: 2px; }
-.dev label { display: block; margin-top: 8px; font-size: 13px; color: #b9c6d6; }
+/* Visible outline when using the keyboard (Tab key) to move between controls */
+.btn:focus-visible, select:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--plume);
+  outline-offset: 3px;
+}
 
-/* Phones: globe on top, panel below */
-@media (max-width: 760px) {
-  #app { grid-template-columns: 1fr; grid-template-rows: 60vh auto; height: auto; }
-  #globe { height: 60vh; }
-  #panel { border-left: none; border-top: 1px solid #1d2c44; }
+/* "Replay ascent": subtle, sits next to the timeline */
+.btn-ghost {
+  grid-area: replay;
+  padding: 8px 18px;
+  background: rgba(9, 13, 32, 0.6);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+}
+.btn-ghost:hover { border-color: var(--plume); }
+
+/* "Show viewing zones": outlined when off, filled white when on */
+.btn-toggle {
+  width: 100%;
+  padding: 11px 18px;
+  background: transparent;
+  border: 1px solid var(--line);
+}
+.btn-toggle:hover { border-color: var(--mist); }
+.btn-toggle[aria-pressed='true'] {
+  background: var(--ice);
+  border-color: var(--ice);
+  color: var(--night);
+}
+
+/* ---------- Developer tools (collapsible, bottom of panel) ---------- */
+.dev {
+  margin-top: 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--mist);
+  font-size: 13px;
+}
+.dev summary { cursor: pointer; }
+.dev label { display: block; margin: 12px 0 6px; }
+.dev select {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--ice);
+  background: rgba(9, 13, 32, 0.9);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+/* ---------- Phones and narrow windows (860px wide or less) ----------
+   Stop floating things over the globe. Instead: globe on top, timeline under
+   it, then the panel, all in a normal scrolling column. */
+@media (max-width: 860px) {
+  :root { --edge: 20px; }
+
+  #app { position: relative; } /* lets the hero position itself over the globe */
+
+  #globe { position: relative; left: 0; width: 100%; height: 62vh; }
+
+  .hero { position: absolute; top: 18px; left: var(--edge); right: var(--edge); }
+  .countdown { font-size: clamp(48px, 15vw, 80px); }
+  .mission-name { font-size: 24px; }
+
+  /* Event labels would overlap on a narrow screen, so hide them;
+     the phase name above the track already says which event we're at */
+  .event { font-size: 0; }
+  .track { margin-bottom: 18px; }
+
+  .flight {
+    position: relative;
+    left: auto; right: auto; bottom: auto;
+    padding: 20px var(--edge) 0;
+  }
+
+  #panel {
+    position: relative;
+    width: auto;
+    padding: 10px var(--edge) 40px;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-left: none;
+  }
+  .brand { display: none; }
+}
+
+/* Accessibility: if someone has "reduce motion" turned on, skip the fades */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
 }

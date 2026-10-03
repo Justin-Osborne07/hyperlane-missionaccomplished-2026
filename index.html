@@ -1,42 +1,97 @@
 <!doctype html>
+<!--
+  index.html  (Colby)
+  The page structure. Most of the content is filled in by src/main.js;
+  this file just provides the empty boxes with IDs that main.js looks for.
+-->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Makes the page scale properly on phones -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Launch Watcher</title>
+
+    <!-- Rocket emoji as the browser tab icon (no image file needed) -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>" />
+
+    <!-- Load the Saira fonts from Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@300;500;600&family=Saira:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="app">
-      <main id="globe" aria-label="3D globe showing the launch trajectory"></main>
+      <!-- The 3D globe is drawn inside this div by src/globe.js -->
+      <div id="globe" aria-label="3D globe showing the launch trajectory"></div>
 
+      <!-- HERO: big countdown and mission name, floating over the globe (top-left) -->
+      <header class="hero">
+        <p class="hero-label">Next launch</p>
+        <!-- Numbers filled in every second by src/placeholders/countdown.js -->
+        <div id="countdown" class="countdown" aria-live="off">
+          <span class="countdown-prefix">T&minus;</span><span id="countdown-time">--:--:--</span>
+        </div>
+        <p id="window-line" class="window-line"></p>
+        <h1 id="mission-name" class="mission-name"></h1>
+        <p id="mission-sub" class="mission-sub"></p>
+      </header>
+
+      <!-- ASCENT TIMELINE: progress bar along the bottom, synced to the rocket animation -->
+      <section class="flight" aria-label="Ascent timeline">
+        <div class="flight-head">
+          <span id="phase" class="phase">Liftoff</span>   <!-- current event name -->
+          <span id="met" class="met">T+00:00</span>       <!-- time since liftoff -->
+        </div>
+        <div class="track">
+          <div id="track-fill" class="track-fill"></div>    <!-- orange progress -->
+          <div id="track-events" class="track-events"></div> <!-- event dots, added by main.js -->
+        </div>
+        <button id="replay" class="btn btn-ghost">Replay ascent</button>
+      </section>
+
+      <!-- SIDE PANEL (right) -->
       <aside id="panel">
-        <h1>Launch Watcher</h1>
+        <p class="brand">Launch Watcher</p>
 
-        <!-- Yosry mounts the countdown here -->
-        <section id="countdown-slot" class="slot"></section>
-
-        <!-- Yosry mounts the launch info / launch list here -->
-        <section id="launch-info-slot" class="slot"></section>
-
-        <!-- Justin mounts the weather card here -->
-        <section id="weather-slot" class="slot"></section>
-
-        <!-- Colby's dev controls (remove or restyle later) -->
-        <section class="slot dev">
-          <h2>Globe controls</h2>
-          <button id="replay">Replay ascent</button>
-          <button id="toggle-zones">Show viewing zones</button>
-          <label>
-            Test weather colour
-            <select id="weather-test">
-              <option value="green">Green</option>
-              <option value="yellow">Yellow</option>
-              <option value="red">Red</option>
-            </select>
-          </label>
+        <!-- Rocket, launch site, orbit, inclination (filled by main.js) -->
+        <section class="block" id="mission-slot">
+          <h2>Mission</h2>
+          <dl id="mission-details" class="details"></dl>
         </section>
+
+        <!-- Weather card (filled by src/placeholders/weather-card.js) -->
+        <section class="block" id="weather-slot">
+          <h2>Launch weather</h2>
+          <div id="weather-card"></div>
+        </section>
+
+        <!-- Viewing zones toggle (bonus feature) -->
+        <section class="block" id="viewing-slot">
+          <h2>Where to watch</h2>
+          <p class="muted">
+            Each circle shows how far away the rocket is visible from the ground at that point in the climb.
+            The closer you are to the launch site, the better the view.
+          </p>
+          <button id="toggle-zones" class="btn btn-toggle" aria-pressed="false">Show viewing zones</button>
+        </section>
+
+        <!-- Test controls, hidden in a collapsible section -->
+        <details class="dev">
+          <summary>Developer tools</summary>
+          <label for="weather-test">Test weather rating</label>
+          <select id="weather-test">
+            <option value="green">Green</option>
+            <option value="yellow">Yellow</option>
+            <option value="red">Red</option>
+          </select>
+        </details>
       </aside>
     </div>
+
+    <!-- Starts the app -->
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
