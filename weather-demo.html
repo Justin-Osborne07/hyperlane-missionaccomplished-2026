@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Justin's weather test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 700px; margin: 40px auto; padding: 20px; }
+        button { padding: 10px; margin: 4px; cursor: pointer; }
+        select { padding: 10px; max-width: 100%; margin: 8px 0; }
+        #weather-card { border: 1px solid #ccc; border-radius: 8px; padding: 20px; margin-top: 20px; }
+        small { display: block; }
+    </style>
+</head>
+<body>
+    <h1>Justin's weather test</h1>
+    <p>Choose a launch site for a live forecast about one hour from now. Mock buttons use invented weather.</p>
+    <label for="launch-pad">Launch site:</label>
+    <select id="launch-pad"></select>
+    <p id="forecast-info" aria-live="polite"></p>
+    <button data-rating="green">Mock green</button>
+    <button data-rating="yellow">Mock yellow</button>
+    <button data-rating="red">Mock red</button>
+    <button id="live">Live forecast test</button>
+    <section id="weather-card" aria-live="polite"></section>
+    <p>Forecast data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a></p>
+    <p id="zone-result"></p>
+
+    <script type="module">
+        import { mockWeather } from "./src/mock-weather.js";
+        import { getWeather } from "./src/weather.js";
+        import { renderWeatherCard } from "./src/weather-card.js";
+        import { getViewingZones } from "./src/visibility.js";
+        import { launchPads } from "./src/launch-pads.js";
+
+        /*
+
+        Setting up the site selector
+
+        - Import the shared list of sites and add an option for each one
+        - The option value stores its id, and textContent displays its name
+        - Canso is first, so it is selected by default
+        - requestId stops older requests from replacing newer results
+
+        */
+
+        const card = document.querySelector("#weather-card");
+        const selector = document.querySelector("#launch-pad");
+        const info = document.querySelector("#forecast-info");
+        for (const pad of launchPads) {
+            const option = document.createElement("option");
+            option.value = pad.id;
+            option.textContent = pad.name;
+            selector.append(option);
+        }
+
+        let requestId = 0;
+        renderWeatherCard(card, mockWeather.green);
+        info.textContent = "Showing mock green weather. Choose a site or click Live forecast test for real forecast data.";
+
+        /*
+
+        Keeping the mock examples available
+
+        - Increment requestId so a pending live request cannot overwrite the mock
+        - Clearly label the result as invented weather
+
+        */
+
+        for (const button of document.querySelectorAll("[data-rating]")) {
+            button.addEventListener("click", () => {
+                requestId++;
+                info.textContent = "Mock weather example — invented readings, not a forecast for the selected site.";
+                renderWeatherCard(card, mockWeather[button.dataset.rating]);
+            });
+        }
+
+        /*
+
+        Getting live weather for the selected site
+
+        - find gets the site whose id matches the selected option
+        - Use its coordinates instead of the previous fixed Florida location
+        - The time is one hour from now for this test, not a scheduled launch
+        - Pass this object to our existing getWeather function
+        - Only display a response if it belongs to the latest request
+
+        */
+
+        async function loadSelectedWeather() {
+            const pad = launchPads.find(pad => pad.id === selector.value);
+            if (!pad) return;
+            const currentRequest = ++requestId;
+            const start = new Date(Date.now() + 3600000);
+            info.textContent = `${pad.name} | Approx. location: ${pad.lat}, ${pad.lon} | Demo forecast target: ${start.toLocaleString()}`;
+            renderWeatherCard(card, null, "Loading live forecast...");
+            const testLaunch = {
+                pad: { lat: pad.lat, lon: pad.lon },
+                windowStart: start.toISOString()
+            };
+            try {
+                const weather = await getWeather(testLaunch);
+                if (currentRequest === requestId) renderWeatherCard(card, weather);
+            } catch (error) {
+                if (currentRequest === requestId) {
+                    renderWeatherCard(card, null, "Weather unavailable: " + error.message);
+                }
+            }
+        }
+
+        /*
+
+        Connecting the controls to the function
+
+        - Changing the selected site automatically requests its forecast
+        - The live button requests a fresh forecast for the current selection
+
+        */
+
+        selector.addEventListener("change", loadSelectedWeather);
+        document.querySelector("#live").addEventListener("click", loadSelectedWeather);
+
+        const testTrajectory = [{ t: 0, lat: 28.56, lon: -80.58, altKm: 0 },
+            { t: 120, lat: 29, lon: -79, altKm: 100 }];
+        const zones = getViewingZones(testTrajectory);
+        document.querySelector("#zone-result").textContent =
+            `Separate geometry test: horizon radius at 100 km is ${Math.round(zones[0].radiusKm)} km. This sample trajectory does not change with the weather selector.`;
+    </script>
+</body>
+</html>
