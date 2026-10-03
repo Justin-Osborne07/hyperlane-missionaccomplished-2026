@@ -197,6 +197,21 @@ html, body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Globe view / Side view buttons, pushed to the right of the timeline header */
+.cam-switch {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  font-family: var(--text);
+}
+
+.cam-switch .choice {
+  padding: 5px 12px;
+  font-size: 13px;
+  background: rgba(9, 13, 32, 0.6);
+  backdrop-filter: blur(10px);
+}
+
 /* The thin grey line the progress runs along */
 .track {
   grid-area: track;

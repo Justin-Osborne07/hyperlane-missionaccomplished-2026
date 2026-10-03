@@ -207,6 +207,65 @@ const globe = createGlobe($('globe'), {
     selectLaunch();
   },
   onSpotClick: (spot) => focusSpot(spot),
+  onCameraChange: (mode) => drawCameraSwitch(mode),
+});
+
+
+// -----------------------------------------------------------------------------
+// Camera view switch: "Globe view" / "Side view"
+// -----------------------------------------------------------------------------
+// Two buttons next to the mission clock, above the ascent timeline.
+// Side view looks across the flight path from near the ground, so you can see
+// the arc of the climb. In side view: drag to orbit, scroll to zoom.
+
+const CAMERA_VIEWS = [
+  { mode: 'globe', label: 'Globe view', hint: 'See the whole flight path from space' },
+  { mode: 'side', label: 'Side view', hint: 'See the arc from the side. Drag to orbit, scroll to zoom' },
+];
+
+// Create the button group once and add it to the timeline header
+const cameraSwitch = document.createElement('div');
+cameraSwitch.className = 'cam-switch';
+cameraSwitch.setAttribute('role', 'group');
+cameraSwitch.setAttribute('aria-label', 'Camera view');
+document.querySelector('.flight-head').append(cameraSwitch);
+
+
+// Draw the two buttons, highlighting the active one
+function drawCameraSwitch(activeMode) {
+
+  const buttons = CAMERA_VIEWS.map((view) => {
+
+    const pressed = view.mode === activeMode;
+
+    return `
+      <button class="choice" data-cam="${view.mode}" aria-pressed="${pressed}" title="${view.hint}">
+        ${view.label}
+      </button>`;
+  });
+
+  cameraSwitch.innerHTML = buttons.join('');
+}
+
+drawCameraSwitch('globe');
+
+
+// Clicking a view button
+cameraSwitch.addEventListener('click', (e) => {
+
+  const button = e.target.closest('[data-cam]');
+
+  if (!button) {
+    return;
+  }
+
+  const mode = button.dataset.cam;
+
+  globe.setCameraMode(mode);
+  drawCameraSwitch(mode);
+
+  // Side view replaces any spot close-up, so hide "Back to launch view"
+  $('back-to-launch').hidden = true;
 });
 
 // Show all of Justin's launch sites on the globe

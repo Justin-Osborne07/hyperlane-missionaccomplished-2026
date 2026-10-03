@@ -14,6 +14,8 @@
 //   replay()                                 -> restart the rocket animation
 //   showViewingAreas(areas) / clearZones()   -> the three viewing zones (bonus)
 //   showSpots(spots) / flyToSpot(spot)       -> viewing spot pins (bonus)
+//   setCameraMode('globe' | 'side')          -> normal globe view, or a side-on
+//                                               view at ground level showing the arc
 //   showZones(zones)                         -> older circle-style zones (unused now)
 //
 // Keeping it this way means the rest of the team can change their code freely
@@ -50,6 +52,9 @@ const STAGE_FADE_S = 90;
 
 // Pause at the end before the animation loops
 const PAUSE_MS = 1500;
+
+// How long camera moves between views take
+const CAMERA_MOVE_MS = 1800;
 
 // Colour of the flight path for each weather rating
 const RATING_COLORS = {
@@ -117,9 +122,16 @@ const altFromKm = (km) => (km / EARTH_R_KM) * ALT_SCALE;
 //
 //   options.onPadClick(pad):
 //     optional function called when someone clicks a launch site on the globe.
+//
+//   options.onSpotClick(spot):
+//     optional function called when someone clicks a viewing spot pin.
+//
+//   options.onCameraChange(mode):
+//     optional function called when the globe switches camera mode by itself
+//     (e.g. leaving side view to zoom in on a viewing spot).
 // =============================================================================
 
-export function createGlobe(container, { onTick, onPadClick, onSpotClick } = {}) {
+export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCameraChange } = {}) {
 
   // ---------------------------------------------------------------------------
   // Build the globe
@@ -704,24 +716,237 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick } = {})
   }
 
 
+  // ===========================================================================
+  // CAMERA
   // ---------------------------------------------------------------------------
-  // flyTo(trajectory, ms)
-  // Smoothly move the camera to look at the middle of the flight path.
+  // Two camera modes:
   //
-  //   lat - 5   tilts the view slightly so we look "up" the path
-  //   altitude  is zoom (lower = closer)
-  //   ms        is how long the camera move takes
+  //   'globe': the normal view. globe.gl's controls let you spin and zoom the
+  //            Earth, always looking at its centre.
+  //
+  //   'side':  a view from low over the ground, off to one side of the flight
+  //            path, looking across it so you see the arc of the climb in
+  //            profile (like watching from the beach).
+  //
+  // globe.gl's controls always aim the camera at the Earth's centre, so in
+  // side mode we switch them off and aim the camera ourselves. We also add a
+  // simple drag-to-orbit and scroll-to-zoom for side mode (see below).
+  // ===========================================================================
+
+  const camera = globe.camera();
+  const controls = globe.controls();
+
+  // 'globe' or 'side'
+  let cameraMode = 'globe';
+
+  // Where the camera is currently looking (needed to blend between views)
+  const lookPoint = new THREE.Vector3(0, 0, 0);
+
+  // ID of the running camera move, so a new move can cancel it
+  let camMoveId = null;
+
+  // Straight up in world space (the normal "up" for the globe view)
+  const WORLD_UP = new THREE.Vector3(0, 1, 0);
+
+
+  // ---------------------------------------------------------------------------
+  // globePose(trajectory)
+  // Where the camera sits for the normal globe view: above the middle of the
+  // flight path, tilted slightly (lat - 5) so we look "up" the path,
+  // looking at the Earth's centre.
   // ---------------------------------------------------------------------------
 
-  function flyTo(trajectory, ms = 2000) {
+  function globePose(trajectory) {
 
     const mid = trajectory[Math.floor(trajectory.length / 2)];
+    const p = globe.getCoords(mid.lat - 5, mid.lon, 0.9);
 
-    globe.pointOfView(
-      { lat: mid.lat - 5, lng: mid.lon, altitude: 0.9 },
-      ms
-    );
+    return {
+      position: new THREE.Vector3(p.x, p.y, p.z),
+      look: new THREE.Vector3(0, 0, 0),
+      up: WORLD_UP.clone(),
+    };
   }
+
+
+  // ---------------------------------------------------------------------------
+  // sidePose(trajectory)
+  // Where the camera sits for the side view.
+  //
+  //   1. Find the ground point under the middle of the arc, and "up" there.
+  //   2. Find the direction the rocket travels, flattened along the ground.
+  //   3. Step sideways from the arc (at right angles to the travel direction)
+  //      and a little upwards: that's the camera position.
+  //   4. Look at a point halfway up the arc.
+  //
+  // The camera's "up" is set to the local up, so the horizon looks level.
+  // The side is chosen so the rocket flies from left to right on screen.
+  // ---------------------------------------------------------------------------
+
+  function sidePose(trajectory) {
+
+    const first = trajectory[0];
+    const last = trajectory[trajectory.length - 1];
+
+    // 3D positions of the start (on the pad) and end (in orbit) of the arc
+    const start = toVec(globe.getCoords(first.lat, first.lon, altFromKm(first.altKm)));
+    const end = toVec(globe.getCoords(last.lat, last.lon, altFromKm(last.altKm)));
+
+    // 1. Ground point under the middle of the arc, and "up" there
+    const up = start.clone().add(end).normalize();
+    const midGround = up.clone().multiplyScalar(globe.getGlobeRadius());
+
+    // 2. Travel direction, flattened along the ground (remove the "up" part)
+    const travel = end.clone().sub(start);
+    const along = travel.clone().addScaledVector(up, -travel.dot(up)).normalize();
+
+    // Sideways: at right angles to both "along" and "up".
+    // This order (along × up) puts the launch on the left of the screen.
+    const side = new THREE.Vector3().crossVectors(along, up).normalize();
+
+    // How long and how tall the arc is (in globe units)
+    const arcLength = travel.length();
+    const peak = Math.max(...trajectory.map((p) => altFromKm(p.altKm))) * globe.getGlobeRadius();
+
+    // 3. Camera: off to the side, about as far away as the arc is long,
+    //    and raised a little so the start of the arc isn't hidden by the
+    //    Earth's curve
+    const position = midGround.clone()
+      .addScaledVector(side, arcLength * 1.05)
+      .addScaledVector(up, peak * 0.35);
+
+    // 4. Look halfway up the arc
+    const look = midGround.clone().addScaledVector(up, peak * 0.5);
+
+    return { position, look, up };
+  }
+
+
+  // Turn {x, y, z} into a three.js vector
+  function toVec(p) {
+    return new THREE.Vector3(p.x, p.y, p.z);
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // moveCamera(pose, onDone)
+  // Smoothly glide the camera to a new pose (position, look point, up),
+  // blending all three at once. "Ease in-out" starts and ends gently.
+  // ---------------------------------------------------------------------------
+
+  function moveCamera(pose, onDone) {
+
+    cancelAnimationFrame(camMoveId);
+
+    // Our own movement needs globe.gl's controls switched off, otherwise they
+    // would keep pulling the camera back to look at the Earth's centre
+    controls.enabled = false;
+
+    const fromPos = camera.position.clone();
+    const fromLook = lookPoint.clone();
+    const fromUp = camera.up.clone();
+    const startTime = performance.now();
+
+    const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+
+    const step = (now) => {
+
+      const t = Math.min((now - startTime) / CAMERA_MOVE_MS, 1);
+      const e = ease(t);
+
+      camera.position.lerpVectors(fromPos, pose.position, e);
+      lookPoint.lerpVectors(fromLook, pose.look, e);
+      camera.up.lerpVectors(fromUp, pose.up, e).normalize();
+      camera.lookAt(lookPoint);
+
+      if (t < 1) {
+        camMoveId = requestAnimationFrame(step);
+      } else if (onDone) {
+        onDone();
+      }
+    };
+
+    camMoveId = requestAnimationFrame(step);
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // flyTo(trajectory)
+  // Move the camera to show a flight path, in whichever mode is active.
+  // ---------------------------------------------------------------------------
+
+  function flyTo(trajectory) {
+
+    if (cameraMode === 'side') {
+      moveCamera(sidePose(trajectory));
+      return;
+    }
+
+    // Globe view: glide there, then hand control back to globe.gl
+    moveCamera(globePose(trajectory), handBackControls);
+  }
+
+
+  // Give the camera back to globe.gl's controls (spin and zoom the globe)
+  function handBackControls() {
+    camera.up.copy(WORLD_UP);
+    lookPoint.set(0, 0, 0);
+    controls.target.set(0, 0, 0);
+    controls.enabled = true;
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // Side view: drag to orbit around the arc, scroll to zoom.
+  // (globe.gl's own controls are off in side mode, so we add simple ones.)
+  // ---------------------------------------------------------------------------
+
+  let dragX = null;
+
+  container.addEventListener('pointerdown', (e) => {
+    if (cameraMode === 'side') {
+      dragX = e.clientX;
+    }
+  });
+
+  window.addEventListener('pointerup', () => {
+    dragX = null;
+  });
+
+  container.addEventListener('pointermove', (e) => {
+
+    if (cameraMode !== 'side' || dragX === null) {
+      return;
+    }
+
+    // Rotate the camera around the look point, about the local "up" axis
+    const angle = -(e.clientX - dragX) * 0.004;
+    dragX = e.clientX;
+
+    const offset = camera.position.clone().sub(lookPoint);
+    offset.applyAxisAngle(camera.up, angle);
+
+    camera.position.copy(lookPoint).add(offset);
+    camera.lookAt(lookPoint);
+  });
+
+  container.addEventListener('wheel', (e) => {
+
+    if (cameraMode !== 'side') {
+      return;
+    }
+
+    e.preventDefault();
+
+    // Scroll down = move away, up = move closer, within sensible limits
+    const offset = camera.position.clone().sub(lookPoint);
+    const factor = e.deltaY > 0 ? 1.08 : 0.92;
+    const newLength = Math.min(Math.max(offset.length() * factor, 4), 150);
+
+    offset.setLength(newLength);
+    camera.position.copy(lookPoint).add(offset);
+    camera.lookAt(lookPoint);
+  }, { passive: false });
 
 
   // ---------------------------------------------------------------------------
@@ -895,8 +1120,41 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick } = {})
     // Zoom the camera right in on one viewing spot
     // -------------------------------------------------------------------------
     flyToSpot(spot) {
+
+      // Spots are shown from above, so leave side view first
+      if (cameraMode === 'side') {
+        cameraMode = 'globe';
+
+        if (onCameraChange) {
+          onCameraChange('globe');
+        }
+      }
+
+      cancelAnimationFrame(camMoveId);
+      handBackControls();
+
       globe.controls().autoRotate = false;
       globe.pointOfView({ lat: spot.lat, lng: spot.lon, altitude: spot.city ? 0.25 : 0.15 }, 1500);
+    },
+
+
+    // -------------------------------------------------------------------------
+    // Switch camera mode: 'globe' (normal) or 'side' (see the arc side-on)
+    // -------------------------------------------------------------------------
+    setCameraMode(mode) {
+
+      cameraMode = mode;
+      globe.controls().autoRotate = false;
+
+      if (current.trajectory.length) {
+        flyTo(current.trajectory);
+      }
+    },
+
+
+    /** Which camera mode is active: 'globe' or 'side' */
+    getCameraMode() {
+      return cameraMode;
     },
 
 
