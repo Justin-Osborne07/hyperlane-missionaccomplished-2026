@@ -6,7 +6,7 @@
 //   1. Data and settings
 //   2. The ascent timeline (bottom of the screen)
 //   3. The globe
-//   4. Launch site + orbit pickers (side panel)
+//   4. Launch site, orbit and rocket pickers (side panel)
 //   5. selectLaunch(): switches the whole page to a new launch
 //   6. Buttons and developer tools
 //
@@ -20,6 +20,7 @@
 import './style.css';
 
 import { createGlobe } from './globe.js';
+import { ROCKETS, rocketFor } from './rockets.js';
 import { startCountdown } from './placeholders/countdown.js';
 import { renderWeather } from './placeholders/weather-card.js';
 
@@ -41,28 +42,17 @@ import {
 // 1. DATA AND SETTINGS
 // =============================================================================
 
-// Key moments in a typical ascent, in seconds after liftoff (approximate).
-// These become the dots on the timeline at the bottom of the screen.
-const EVENTS = [
-
-  // the rocket leaves the pad
-  { t: 0, label: 'Liftoff' },
-
-  // moment of maximum aerodynamic stress
-  { t: 72, label: 'Max Q' },
-
-  // first stage drops away
-  { t: 160, label: 'Stage separation' },
-
-  // satellite reaches orbit
-  { t: 540, label: 'Orbit insertion' },
-];
+// Key moments in the ascent (Liftoff, Max Q, separation, orbit) become the
+// dots on the timeline. Each rocket has its own timings in rockets.js, so this
+// list is swapped whenever the rocket changes (see selectLaunch).
+let EVENTS = ROCKETS[0].events;
 
 
 // What's currently selected. Canso is first in Justin's list, so it's the default.
 const state = {
   pad: launchPads[0],
   orbit: 'LEO',
+  rocket: ROCKETS[0],   // Falcon 9
 
   // filled in by selectLaunch()
   launch: null,
@@ -237,6 +227,23 @@ function drawOrbitPicker() {
 }
 
 
+// One button per rocket model (Falcon 9, Falcon Heavy, SLS, Saturn V, Starship)
+function drawRocketPicker() {
+
+  const buttons = ROCKETS.map((rocket) => {
+
+    const pressed = rocket.id === state.rocket.id;
+
+    return `
+      <button class="choice" data-rocket="${rocket.id}" aria-pressed="${pressed}">
+        ${rocket.name}
+      </button>`;
+  });
+
+  $('rocket-picker').innerHTML = buttons.join('');
+}
+
+
 // Clicking a site button. We listen on the whole picker and check which
 // button was clicked ("event delegation"), because the buttons get redrawn.
 $('site-picker').addEventListener('click', (e) => {
@@ -266,6 +273,20 @@ $('orbit-picker').addEventListener('click', (e) => {
 });
 
 
+// Clicking a rocket button
+$('rocket-picker').addEventListener('click', (e) => {
+
+  const button = e.target.closest('[data-rocket]');
+
+  if (!button) {
+    return;
+  }
+
+  state.rocket = ROCKETS.find((r) => r.id === button.dataset.rocket);
+  selectLaunch();
+});
+
+
 // =============================================================================
 // 5. selectLaunch()
 // -----------------------------------------------------------------------------
@@ -278,7 +299,7 @@ function selectLaunch() {
   // --- Build the launch and its flight path ---
 
   // PLUG-IN POINT (Yosry): replace with his real launch for this site
-  state.launch = buildDemoLaunch(state.pad, state.orbit);
+  state.launch = buildDemoLaunch(state.pad, state.orbit, state.rocket.name);
 
   // PLUG-IN POINT (Yosry): replace with getTrajectory(state.launch)
   state.trajectory = makeMockTrajectory(state.launch);
@@ -297,6 +318,19 @@ function selectLaunch() {
 
   drawSitePicker();
   drawOrbitPicker();
+  drawRocketPicker();
+
+
+  // --- Rocket model ---
+
+  // Find the 3D model from the launch's rocket name. Using the name (not the
+  // button) means Yosry's real launches pick the right model automatically.
+  const rocket = rocketFor(launch.rocket);
+
+  globe.setRocket(rocket);
+
+  // This rocket's own event timings for the timeline
+  EVENTS = rocket.events;
 
 
   // --- Timeline ---
@@ -474,6 +508,7 @@ $('weather-test').addEventListener('change', (e) => {
 // Draw the pickers right away so the panel isn't empty
 drawSitePicker();
 drawOrbitPicker();
+drawRocketPicker();
 
 // Let the Earth spin for 1.5 seconds, then fly to the default launch (Canso)
 setTimeout(selectLaunch, 1500);

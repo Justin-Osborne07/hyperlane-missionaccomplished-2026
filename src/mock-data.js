@@ -63,16 +63,17 @@ export const ORBITS = {
   SSO: { name: 'Sun-synchronous orbit', inclination: 98.1 },
 };
 
-// pad:      one entry from Justin's launch-pads.js ({ id, name, lat, lon })
-// orbitKey: 'LEO' | 'Polar' | 'SSO'
-export function buildDemoLaunch(pad, orbitKey = 'LEO') {
+// pad:        one entry from Justin's launch-pads.js ({ id, name, lat, lon })
+// orbitKey:   'LEO' | 'Polar' | 'SSO'
+// rocketName: e.g. 'Falcon 9' (see rockets.js)
+export function buildDemoLaunch(pad, orbitKey = 'LEO', rocketName = 'Falcon 9') {
 
   const orbit = ORBITS[orbitKey];
 
   return {
     id: `demo-${pad.id}-${orbitKey}`,
     name: `${orbit.name} demo mission`,
-    rocket: 'Demo rocket',
+    rocket: rocketName,
 
     // window opens in 3 hours and closes in 4 hours (close enough for a real forecast)
     windowStart: new Date(Date.now() + 3 * ONE_HOUR_MS).toISOString(),

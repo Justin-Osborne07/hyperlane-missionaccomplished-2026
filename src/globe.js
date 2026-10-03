@@ -8,6 +8,7 @@
 // small set of functions returned at the bottom of createGlobe():
 //
 //   setPads(pads)                            -> show every launch site as a clickable label
+//   setRocket(rocket)                        -> choose which 3D rocket model flies
 //   showLaunch(launch, trajectory, weather)  -> draw a launch and animate it
 //   setWeather(rating)                       -> recolour the flight path
 //   replay()                                 -> restart the rocket animation
@@ -33,8 +34,17 @@ const EARTH_R_KM = 6371;
 // 1 = true scale (very flat), higher = more dramatic.
 const ALT_SCALE = 3;
 
-// How long the full ascent takes on screen (10 seconds)
-const PLAYBACK_MS = 10000;
+// How long the full ascent takes on screen (14 seconds)
+const PLAYBACK_MS = 14000;
+
+// How big the rocket model is drawn: globe units per real metre.
+// The Earth is 100 units in radius, so true scale would be invisible.
+// 0.06 makes a 70 m Falcon 9 about 4 units tall. Scroll to zoom in for detail.
+const ROCKET_SIZE = 0.06;
+
+// After stage separation, how many seconds (of flight time) the falling
+// stage takes to fade out completely
+const STAGE_FADE_S = 90;
 
 // Pause at the end before the animation loops
 const PAUSE_MS = 1500;
@@ -93,23 +103,6 @@ const altFromKm = (km) => (km / EARTH_R_KM) * ALT_SCALE;
 // =============================================================================
 
 export function createGlobe(container, { onTick, onPadClick } = {}) {
-
-  // ---------------------------------------------------------------------------
-  // The rocket
-  // ---------------------------------------------------------------------------
-  // Just a small glowing sphere. MeshBasicMaterial ignores lighting, so it
-  // always looks bright no matter which side of the Earth it's on.
-
-  const rocketGeometry = new THREE.SphereGeometry(
-    1.1,  // radius
-    16,   // smoothness around
-    16    // smoothness top-to-bottom
-  );
-
-  const rocketMaterial = new THREE.MeshBasicMaterial({ color: '#fff1d6' });
-
-  const rocketMesh = new THREE.Mesh(rocketGeometry, rocketMaterial);
-
 
   // ---------------------------------------------------------------------------
   // Build the globe
@@ -229,16 +222,11 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     // each circle gets its own height (see showZones below)
     .polygonAltitude((d) => d.properties.alt)
 
-    .polygonsTransitionDuration(300)
+    .polygonsTransitionDuration(300);
 
 
-    // --- The rocket (a custom 3D object) ---
-
-    .objectsData([])
-    .objectLat('lat')
-    .objectLng('lon')
-    .objectAltitude('alt')
-    .objectThreeObject(() => rocketMesh);
+  // The rocket isn't a globe.gl layer: we add it to the 3D scene ourselves
+  // (see "The rocket" below), so we can rotate it and split it into stages.
 
 
   // ---------------------------------------------------------------------------
@@ -403,8 +391,8 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
       const progress = Math.min(elapsed / PLAYBACK_MS, 1);
       const simT = progress * tMax;
 
-      // Move the rocket
-      globe.objectsData([positionAt(traj, simT)]);
+      // Move, point and (at the right moment) separate the rocket
+      updateRocket(traj, simT, tMax, now);
 
       // Tell the page (the timeline) where we are
       if (onTick) {
@@ -416,6 +404,262 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     };
 
     rafId = requestAnimationFrame(frame);
+  }
+
+
+  // ===========================================================================
+  // THE ROCKET
+  // ---------------------------------------------------------------------------
+  // The "rig" holds the current 3D rocket model:
+  //
+  //   root:        a group that moves along the flight path and points the
+  //                rocket in the direction it's travelling
+  //   lower/upper: the two stages (from rockets.js). At stage separation the
+  //                lower stage is detached from root and left to fall away.
+  //   lowerFlame / upperFlame: engine flames, switched on and off by stage
+  //   sep:         where and how the lower stage separated (filled in later)
+  // ===========================================================================
+
+  // Straight up in the model's own coordinates (rockets are built along +Y)
+  const UP = new THREE.Vector3(0, 1, 0);
+
+  // The current rocket rig, or null before setRocket() is called
+  let rig = null;
+
+
+  // ---------------------------------------------------------------------------
+  // buildRig(rocket)
+  // Remove the old rocket (if any) and build a new one from rockets.js
+  // ---------------------------------------------------------------------------
+
+  function buildRig(rocket) {
+
+    const scene = globe.scene();
+
+    // --- Remove the old rocket and free its memory ---
+    if (rig) {
+      scene.remove(rig.root);
+      scene.remove(rig.lower); // in case it had already separated
+
+      rig.root.traverse(disposeMesh);
+      rig.lower.traverse(disposeMesh);
+    }
+
+    // --- Build the new model ---
+    const model = rocket.build();
+
+    // Attach each flame to its own stage, so it moves with that stage
+    model.lower.add(model.lowerFlame);
+    model.upper.add(model.upperFlame);
+
+    const root = new THREE.Group();
+    root.add(model.lower, model.upper);
+
+    // Make it visible from space (see ROCKET_SIZE)
+    root.scale.setScalar(ROCKET_SIZE);
+
+    // Hidden until a launch is shown
+    root.visible = current.trajectory.length > 0;
+
+    scene.add(root);
+
+    rig = {
+      rocket: rocket,
+      root: root,
+      lower: model.lower,
+      upper: model.upper,
+      lowerFlame: model.lowerFlame,
+      upperFlame: model.upperFlame,
+      sep: null,
+    };
+
+    resetStages();
+  }
+
+
+  // Free the memory used by a mesh's shape and material
+  function disposeMesh(obj) {
+    if (obj.isMesh) {
+      obj.geometry.dispose();
+      obj.material.dispose();
+    }
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // resetStages()
+  // Put the lower stage back on the rocket (used when the animation loops).
+  // ---------------------------------------------------------------------------
+
+  function resetStages() {
+
+    // Re-attach the lower stage in its original spot
+    rig.root.add(rig.lower);
+    rig.lower.position.set(0, 0, 0);
+    rig.lower.quaternion.identity();
+    rig.lower.scale.set(1, 1, 1);
+    rig.lower.visible = true;
+
+    // Make it solid again (it was faded out after separating)
+    setStageOpacity(rig.lower, 1);
+
+    // First-stage engines on, upper stage engine off
+    rig.lowerFlame.visible = true;
+    rig.upperFlame.visible = false;
+
+    rig.sep = null;
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // setStageOpacity(stage, opacity)
+  // Fade a stage in or out (1 = solid, 0 = invisible). Skips the flames,
+  // which have their own see-through glow.
+  // ---------------------------------------------------------------------------
+
+  function setStageOpacity(stage, opacity) {
+
+    stage.traverse((obj) => {
+
+      const isFlame = obj.material?.blending === THREE.AdditiveBlending;
+
+      if (obj.isMesh && !isFlame) {
+        obj.material.transparent = opacity < 1;
+        obj.material.opacity = opacity;
+      }
+    });
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // separateStages(dir)
+  // The moment of stage separation. The lower stage is moved from the rocket
+  // into the scene, keeping exactly where it is right now, so it can fall
+  // away on its own while the upper stage keeps flying.
+  //   dir: the direction the rocket is travelling at this moment
+  // ---------------------------------------------------------------------------
+
+  function separateStages(dir) {
+
+    // attach() moves an object to a new parent without it jumping position
+    globe.scene().attach(rig.lower);
+
+    rig.sep = {
+      // where the lower stage was when it separated
+      pos: rig.lower.position.clone(),
+      quat: rig.lower.quaternion.clone(),
+
+      // the direction it was moving, and "down" towards the Earth's centre
+      dir: dir.clone(),
+      down: rig.lower.position.clone().normalize().negate(),
+    };
+
+    // First-stage engines cut off, upper stage engine lights
+    rig.lowerFlame.visible = false;
+    rig.upperFlame.visible = true;
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // updateRocket(traj, simT, tMax, now)
+  // Called every animation frame. Moves the rocket to where it should be at
+  // flight time simT, points it the way it's going, handles stage
+  // separation, and makes the flames flicker.
+  // ---------------------------------------------------------------------------
+
+  // Reusable vectors (creating new ones 60 times a second wastes memory)
+  const posNow = new THREE.Vector3();
+  const posAhead = new THREE.Vector3();
+  const travelDir = new THREE.Vector3();
+  const tumble = new THREE.Quaternion();
+  const X_AXIS = new THREE.Vector3(1, 0, 0);
+
+  function updateRocket(traj, simT, tMax, now) {
+
+    if (!rig) {
+      return;
+    }
+
+
+    // --- Where is it now, and where will it be a moment later? ---
+
+    // Look a few seconds ahead to find the direction of travel.
+    // Near the end of the flight, look behind instead (there's nothing ahead).
+    const tA = Math.min(simT, tMax - 3);
+    const tB = tA + 3;
+
+    const here = positionAt(traj, simT);
+    const a = positionAt(traj, tA);
+    const b = positionAt(traj, tB);
+
+    // getCoords turns latitude/longitude/altitude into a 3D position (x, y, z)
+    posNow.copy(globe.getCoords(here.lat, here.lon, here.alt));
+    travelDir.copy(globe.getCoords(b.lat, b.lon, b.alt))
+      .sub(posAhead.copy(globe.getCoords(a.lat, a.lon, a.alt)))
+      .normalize();
+
+
+    // --- Move the rocket and point its nose along the direction of travel ---
+
+    rig.root.position.copy(posNow);
+    rig.root.quaternion.setFromUnitVectors(UP, travelDir);
+
+
+    // --- Stage separation ---
+
+    const sepT = rig.rocket.separationT;
+
+    // The animation looped back to before separation: put the stage back
+    if (rig.sep && simT < sepT) {
+      resetStages();
+    }
+
+    // Separation moment
+    if (!rig.sep && simT >= sepT) {
+      separateStages(travelDir);
+    }
+
+    // After separation: the lower stage drifts on briefly, falls, tumbles and fades
+    if (rig.sep) {
+
+      const tSince = simT - sepT;   // seconds since separation
+
+      // Keeps coasting forward a little, slowing down (levels off at 2.5 units)
+      const coast = 2.5 * (1 - Math.exp(-tSince / 15));
+
+      // Falls faster and faster (like gravity: distance grows with time squared)
+      const fall = 0.0004 * tSince * tSince;
+
+      rig.lower.position.copy(rig.sep.pos)
+        .addScaledVector(rig.sep.dir, coast)
+        .addScaledVector(rig.sep.down, fall);
+
+      // Slowly tumble end over end
+      tumble.setFromAxisAngle(X_AXIS, 0.015 * tSince);
+      rig.lower.quaternion.copy(rig.sep.quat).multiply(tumble);
+
+      // Fade out, then hide
+      const opacity = Math.max(0, 1 - tSince / STAGE_FADE_S);
+      setStageOpacity(rig.lower, opacity);
+      rig.lower.visible = opacity > 0;
+    }
+
+
+    // --- Engine shutdown at orbit ---
+
+    // Once the rocket reaches orbit (the pause at the end), the engine stops
+    if (simT >= tMax) {
+      rig.upperFlame.visible = false;
+    }
+
+
+    // --- Flicker the flames ---
+    // Stretch them slightly up and down using a fast wave plus a little randomness
+
+    const flicker = 1 + 0.12 * Math.sin(now / 35) + 0.08 * Math.random();
+
+    rig.lowerFlame.scale.set(1, flicker, 1);
+    rig.upperFlame.scale.set(1, flicker, 1);
   }
 
 
@@ -433,7 +677,7 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     const mid = trajectory[Math.floor(trajectory.length / 2)];
 
     globe.pointOfView(
-      { lat: mid.lat - 5, lng: mid.lon, altitude: 1.3 },
+      { lat: mid.lat - 5, lng: mid.lon, altitude: 0.9 },
       ms
     );
   }
@@ -508,7 +752,20 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
 
       drawPath();
       flyTo(trajectory);
+
+      if (rig) {
+        rig.root.visible = true;
+      }
+
       playAscent();
+    },
+
+
+    // -------------------------------------------------------------------------
+    // Choose which rocket model flies. rocket: one entry from ROCKETS in rockets.js
+    // -------------------------------------------------------------------------
+    setRocket(rocket) {
+      buildRig(rocket);
     },
 
 
