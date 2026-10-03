@@ -501,6 +501,154 @@ html, body {
 }
 
 
+/* ---------- Where to watch: legend ---------- */
+
+.legend {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: var(--mist);
+}
+
+.legend li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.legend li + li {
+  margin-top: 8px;
+}
+
+.legend b {
+  color: var(--ice);
+  font-weight: 500;
+}
+
+/* The little coloured square for each zone (matches the globe colours) */
+.swatch {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  border-radius: 4px;
+}
+
+.swatch-liftoff {
+  background: rgba(255, 181, 71, 0.55);
+  border: 1.5px solid #ffb547;
+}
+
+.swatch-high {
+  background: rgba(143, 176, 255, 0.35);
+  border: 1.5px solid rgba(200, 215, 255, 0.8);
+}
+
+.swatch-low {
+  background: rgba(143, 176, 255, 0.12);
+  border: 1.5px solid rgba(170, 195, 255, 0.5);
+}
+
+
+/* ---------- Where to watch: viewing spot cards ---------- */
+
+.spots {
+  display: grid;
+  gap: 8px;
+}
+
+/* One spot: a full-width button you can click to zoom to it */
+.spot {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  font: inherit;
+  color: var(--ice);
+  background: rgba(9, 13, 32, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.spot:hover {
+  border-color: var(--mist);
+}
+
+.spot:focus-visible {
+  outline: 2px solid var(--plume);
+  outline-offset: 3px;
+}
+
+/* Top row: name on the left, price tag on the right */
+.spot-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.spot-name {
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.3;
+}
+
+/* Second row: distance and view quality */
+.spot-meta {
+  margin-top: 4px;
+  color: var(--mist);
+  font-size: 13px;
+}
+
+.spot-perks {
+  margin-top: 4px;
+  color: var(--mist);
+  font-size: 13px;
+}
+
+/* Price tag. Its colour comes from --tag, set by the cost-* classes below */
+.tag {
+  flex: none;
+  padding: 2px 9px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--tag);
+  border: 1px solid var(--tag);
+  border-radius: 999px;
+}
+
+.cost-free {
+  --tag: #3ddc84;
+}
+
+.cost-fee {
+  --tag: #8fb0ff;
+}
+
+.cost-admission {
+  --tag: #b59cff;
+}
+
+.cost-ticket {
+  --tag: #ffb547;
+}
+
+
+.back-btn {
+  margin-top: 12px;
+}
+
+.small-print {
+  margin: 14px 0 0;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+
 /* ---------- Buttons ---------- */
 .btn {
   font: inherit;

@@ -100,14 +100,47 @@
           <div id="weather-card"></div>
         </section>
 
-        <!-- Viewing zones toggle (bonus feature) -->
+        <!-- WHERE TO WATCH (bonus feature)
+             Legend for the three zones, a toggle to show them on the globe,
+             and a list of viewing spots for the selected site (added by main.js) -->
         <section class="block" id="viewing-slot">
+
           <h2>Where to watch</h2>
-          <p class="muted">
-            Each circle shows how far away the rocket is visible from the ground at that point in the climb.
-            The closer you are to the launch site, the better the view.
+
+          <!-- What the coloured zones on the globe mean -->
+          <ul class="legend">
+
+            <li>
+              <span class="swatch swatch-liftoff" aria-hidden="true"></span>
+              <span><b>See liftoff.</b> Close enough to watch it leave the pad.</span>
+            </li>
+
+            <li>
+              <span class="swatch swatch-high" aria-hidden="true"></span>
+              <span><b>High in the sky.</b> The rocket climbs well above the horizon.</span>
+            </li>
+
+            <li>
+              <span class="swatch swatch-low" aria-hidden="true"></span>
+              <span><b>Low on the horizon.</b> A moving light near the horizon on a clear day.</span>
+            </li>
+
+          </ul>
+
+          <button id="toggle-zones" class="btn btn-toggle" aria-pressed="false">Show viewing areas</button>
+
+          <!-- Viewing spots for the selected launch site -->
+          <h2 class="sub-heading">Viewing spots</h2>
+          <p id="site-note" class="muted"></p>
+          <div id="spot-list" class="spots"></div>
+
+          <button id="back-to-launch" class="btn btn-toggle back-btn" hidden>Back to launch view</button>
+
+          <p class="muted small-print">
+            Estimates based on the flight path. Clouds, haze, daylight and terrain affect what you'll really see.
+            Some spots close for certain launches, so check official launch pages before you go.
           </p>
-          <button id="toggle-zones" class="btn btn-toggle" aria-pressed="false">Show viewing zones</button>
+
         </section>
 
         <!-- Test controls, hidden in a collapsible section -->

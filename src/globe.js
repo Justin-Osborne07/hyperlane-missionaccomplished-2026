@@ -12,7 +12,9 @@
 //   showLaunch(launch, trajectory, weather)  -> draw a launch and animate it
 //   setWeather(rating)                       -> recolour the flight path
 //   replay()                                 -> restart the rocket animation
-//   showZones(zones) / clearZones()          -> viewing-zone circles (bonus)
+//   showViewingAreas(areas) / clearZones()   -> the three viewing zones (bonus)
+//   showSpots(spots) / flyToSpot(spot)       -> viewing spot pins (bonus)
+//   showZones(zones)                         -> older circle-style zones (unused now)
 //
 // Keeping it this way means the rest of the team can change their code freely
 // without breaking the globe, and vice versa.
@@ -59,6 +61,21 @@ const RATING_COLORS = {
   none: '#9fd3ff',
 };
 
+// Colours for the three viewing zones (see viewing-areas.js)
+const AREA_STYLES = {
+  low: { fill: 'rgba(143, 176, 255, 0.10)', stroke: 'rgba(170, 195, 255, 0.45)', alt: 0.003 },
+  high: { fill: 'rgba(143, 176, 255, 0.26)', stroke: 'rgba(200, 215, 255, 0.75)', alt: 0.005 },
+  liftoff: { fill: 'rgba(255, 181, 71, 0.40)', stroke: 'rgba(255, 181, 71, 0.95)', alt: 0.007 },
+};
+
+// Pin colours for viewing spots, by cost (matches the price tags in style.css)
+export const COST_COLORS = {
+  free: '#3ddc84',
+  fee: '#8fb0ff',
+  admission: '#b59cff',
+  ticket: '#ffb547',
+};
+
 // Earth textures (satellite photo, terrain bumps, starry background) hosted online
 const IMG = 'https://cdn.jsdelivr.net/npm/three-globe/example/img';
 
@@ -102,7 +119,7 @@ const altFromKm = (km) => (km / EARTH_R_KM) * ALT_SCALE;
 //     optional function called when someone clicks a launch site on the globe.
 // =============================================================================
 
-export function createGlobe(container, { onTick, onPadClick } = {}) {
+export function createGlobe(container, { onTick, onPadClick, onSpotClick } = {}) {
 
   // ---------------------------------------------------------------------------
   // Build the globe
@@ -207,22 +224,46 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
     .pathTransitionDuration(0)
 
 
-    // --- Viewing zones (bonus): see-through circles on the ground ---
+    // --- Viewing zones (bonus): see-through shapes on the ground ---
+    // Each shape carries its own fill colour, outline colour and height
+    // in its "properties" (set in showViewingAreas / showZones below).
 
     .polygonsData([])
-
-    // more transparent for low-quality zones, more solid for high-quality ones
-    .polygonCapColor((d) => `rgba(200, 215, 255, ${0.06 + 0.22 * d.properties.quality})`)
+    .polygonCapColor((d) => d.properties.fill)
 
     // no visible "walls" on the sides
     .polygonSideColor(() => 'rgba(0, 0, 0, 0)')
 
-    .polygonStrokeColor(() => 'rgba(230, 236, 255, 0.55)')
+    .polygonStrokeColor((d) => d.properties.stroke)
 
-    // each circle gets its own height (see showZones below)
+    // each shape sits at its own height so overlaps don't flicker (z-fighting)
     .polygonAltitude((d) => d.properties.alt)
 
-    .polygonsTransitionDuration(300);
+    .polygonsTransitionDuration(300)
+
+
+    // --- Viewing spots (bonus): small coloured pins ---
+
+    .pointsData([])
+    .pointLat((d) => d.lat)
+    .pointLng((d) => d.lon)
+
+    // colour by cost: free, entrance fee, admission, paid ticket
+    .pointColor((d) => COST_COLORS[d.cost.kind])
+
+    // pin size in degrees (cities slightly bigger) and height
+    .pointRadius((d) => (d.city ? 0.09 : 0.05))
+    .pointAltitude(0.004)
+
+    // tooltip when you hover over a pin
+    .pointLabel((d) => `<b>${d.name}</b><br>${d.cost.label}`)
+
+    // clicking a pin tells main.js
+    .onPointClick((d) => {
+      if (onSpotClick) {
+        onSpotClick(d);
+      }
+    });
 
 
   // The rocket isn't a globe.gl layer: we add it to the 3D scene ourselves
@@ -811,7 +852,8 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
         type: 'Feature',
 
         properties: {
-          quality: z.quality,
+          fill: `rgba(200, 215, 255, ${0.06 + 0.22 * z.quality})`,
+          stroke: 'rgba(230, 236, 255, 0.55)',
           alt: 0.004 + i * 0.002,
         },
 
@@ -826,7 +868,50 @@ export function createGlobe(container, { onTick, onPadClick } = {}) {
 
 
     // -------------------------------------------------------------------------
-    // Remove all viewing-zone circles
+    // Bonus: draw the three viewing zones from viewing-areas.js
+    // areas: [{ id: 'low' | 'high' | 'liftoff', ring: [[lon, lat], ...] }]
+    // -------------------------------------------------------------------------
+    showViewingAreas(areas) {
+
+      const features = areas.map((area) => ({
+        type: 'Feature',
+        properties: AREA_STYLES[area.id],
+        geometry: { type: 'Polygon', coordinates: [area.ring] },
+      }));
+
+      globe.polygonsData(features);
+    },
+
+
+    // -------------------------------------------------------------------------
+    // Bonus: show viewing spot pins. spots: entries from viewing-spots.js
+    // -------------------------------------------------------------------------
+    showSpots(spots) {
+      globe.pointsData(spots);
+    },
+
+
+    // -------------------------------------------------------------------------
+    // Zoom the camera right in on one viewing spot
+    // -------------------------------------------------------------------------
+    flyToSpot(spot) {
+      globe.controls().autoRotate = false;
+      globe.pointOfView({ lat: spot.lat, lng: spot.lon, altitude: spot.city ? 0.25 : 0.15 }, 1500);
+    },
+
+
+    // -------------------------------------------------------------------------
+    // Fly back out to see the whole flight path again
+    // -------------------------------------------------------------------------
+    flyToLaunch() {
+      if (current.trajectory.length) {
+        flyTo(current.trajectory);
+      }
+    },
+
+
+    // -------------------------------------------------------------------------
+    // Remove all viewing-zone shapes
     // -------------------------------------------------------------------------
     clearZones() {
       globe.polygonsData([]);
