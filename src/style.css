@@ -864,35 +864,6 @@ html, body {
 }
 
 
-/* ---------- Developer tools (collapsible, bottom of panel) ---------- */
-.dev {
-  margin-top: 8px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
-  color: var(--mist);
-  font-size: 13px;
-}
-
-.dev summary {
-  cursor: pointer;
-}
-
-.dev label {
-  display: block;
-  margin: 12px 0 6px;
-}
-
-.dev select {
-  width: 100%;
-  padding: 8px 10px;
-  font: inherit;
-  color: var(--ice);
-  background: rgba(9, 13, 32, 0.9);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-}
-
-
 /* ---------- Phones and narrow windows (860px wide or less) ----------
    Stop floating things over the globe. Instead: globe on top, timeline under
    it, then the panel, all in a normal scrolling column. */

@@ -35,7 +35,6 @@ import { renderWeather } from './placeholders/weather-card.js';
 // Justin's code
 import { launchPads } from './launches/launch-pads.js';
 import { getWeather } from './weather/weather.js';
-import { mockWeather as testWeather } from './weather/mock-weather.js';
 
 // Where to watch
 import { getViewingAreas, viewQuality, distanceKm } from './launches/viewing-areas.js';
@@ -552,9 +551,6 @@ function selectLaunch() {
 
   // --- Weather ---
 
-  // Switching launch always goes back to the live forecast
-  $('weather-test').value = 'live';
-
   loadWeather();
 }
 
@@ -810,30 +806,6 @@ zonesBtn.addEventListener('click', () => {
 $('back-to-launch').addEventListener('click', () => {
   globe.flyToLaunch();
   $('back-to-launch').hidden = true;
-});
-
-
-// Developer tools: switch between the live forecast and Justin's test
-// weather for each rating, so we can check the card and path colour without
-// waiting for real bad weather. Remove before judging if you like.
-$('weather-test').addEventListener('change', (e) => {
-
-  const choice = e.target.value;
-
-  // "live" goes back to the real forecast
-  if (choice === 'live') {
-    loadWeather();
-    return;
-  }
-
-  // Cancel any forecast still loading, so it doesn't overwrite the test weather
-  weatherRequestId += 1;
-
-  // Use Justin's test weather for that rating
-  state.weather = testWeather[choice];
-
-  renderWeather(weatherEl, state.weather);
-  globe.setWeather(state.weather.rating);
 });
 
 
