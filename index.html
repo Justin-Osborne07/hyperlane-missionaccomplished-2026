@@ -72,13 +72,26 @@
       <aside id="panel">
         <p class="brand">Launch Watcher</p>
 
+        <!-- Launch site + target orbit pickers (buttons added by main.js) -->
+        <section class="block" id="launch-picker">
+
+          <h2>Launch site</h2>
+          <div id="site-picker" class="choices"></div>
+
+          <h2 class="sub-heading">Target orbit</h2>
+          <div id="orbit-picker" class="choices choices-row"></div>
+
+          <p class="muted hint">You can also click a launch site on the globe.</p>
+
+        </section>
+
         <!-- Rocket, launch site, orbit, inclination (filled by main.js) -->
         <section class="block" id="mission-slot">
           <h2>Mission</h2>
           <dl id="mission-details" class="details"></dl>
         </section>
 
-        <!-- Weather card (filled by src/placeholders/weather-card.js) -->
+        <!-- Weather card: data from Justin's src/weather.js, drawn by src/placeholders/weather-card.js -->
         <section class="block" id="weather-slot">
           <h2>Launch weather</h2>
           <div id="weather-card"></div>
@@ -99,6 +112,7 @@
           <summary>Developer tools</summary>
           <label for="weather-test">Test weather rating</label>
           <select id="weather-test">
+            <option value="live">Live forecast</option>
             <option value="green">Green</option>
             <option value="yellow">Yellow</option>
             <option value="red">Red</option>

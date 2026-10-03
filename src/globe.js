@@ -7,6 +7,7 @@
 // The rest of the app never touches globe.gl directly. Instead it calls the
 // small set of functions returned at the bottom of createGlobe():
 //
+//   setPads(pads)                            -> show every launch site as a clickable label
 //   showLaunch(launch, trajectory, weather)  -> draw a launch and animate it
 //   setWeather(rating)                       -> recolour the flight path
 //   replay()                                 -> restart the rocket animation
@@ -60,6 +61,16 @@ const IMG = 'https://cdn.jsdelivr.net/npm/three-globe/example/img';
 const toRad = (d) => (d * Math.PI) / 180;
 const toDeg = (r) => (r * 180) / Math.PI;
 
+// Shorten a launch site name for the globe label:
+// "Canso — Spaceport Nova Scotia, NS" -> "Canso"
+// (cuts at the first long dash or comma)
+const shortName = (name) => name.split(/\s+—\s+|,/)[0].trim();
+
+// Two pads are "the same" if they share an id, or (if there's no id)
+// the same coordinates. Yosry's real launch data may not include ids.
+const samePad = (a, b) =>
+  a && b && (a.id ? a.id === b.id : a.lat === b.lat && a.lon === b.lon);
+
 // globe.gl measures altitude in "Earth radii" (1 = one Earth radius above the
 // surface), not kilometres. This converts km to that unit and applies the
 // exaggeration from ALT_SCALE.
@@ -76,9 +87,12 @@ const altFromKm = (km) => (km / EARTH_R_KM) * ALT_SCALE;
 //     optional function called every animation frame with the rocket's
 //     current flight time, so other parts of the page (like the ascent
 //     timeline) can stay in sync with the animation.
+//
+//   options.onPadClick(pad):
+//     optional function called when someone clicks a launch site on the globe.
 // =============================================================================
 
-export function createGlobe(container, { onTick } = {}) {
+export function createGlobe(container, { onTick, onPadClick } = {}) {
 
   // ---------------------------------------------------------------------------
   // The rocket
@@ -127,16 +141,28 @@ export function createGlobe(container, { onTick } = {}) {
     .atmosphereAltitude(0.18)
 
 
-    // --- Launch pad label + dot ---
+    // --- Launch site labels + dots (every site, clickable) ---
 
     .labelsData([])
     .labelLat((d) => d.lat)
     .labelLng((d) => d.lon)
-    .labelText((d) => d.name)
-    .labelSize(0.45)
-    .labelDotRadius(0.3)
-    .labelColor(() => 'rgba(230, 236, 255, 0.85)')
+
+    // short name, e.g. "Canso" instead of "Canso — Spaceport Nova Scotia, NS"
+    .labelText((d) => shortName(d.name))
+
+    // the selected site is bigger and orange, the others smaller and white
+    .labelSize((d) => (d.selected ? 0.6 : 0.45))
+    .labelDotRadius((d) => (d.selected ? 0.4 : 0.3))
+    .labelColor((d) => (d.selected ? '#ffb547' : 'rgba(230, 236, 255, 0.8)'))
+
     .labelResolution(2)
+
+    // clicking a site tells main.js, which then switches to that site
+    .onLabelClick((d) => {
+      if (onPadClick) {
+        onPadClick(d.pad);
+      }
+    })
 
 
     // --- Pulsing orange rings at the pad (like a radar ping) ---
@@ -246,6 +272,39 @@ export function createGlobe(container, { onTick } = {}) {
 
   // ID of the running animation loop, so we can stop it later
   let rafId = null;
+
+  // Every launch site to show on the globe (set with setPads)
+  let pads = [];
+
+
+  // ---------------------------------------------------------------------------
+  // drawPads()
+  // Draw a label for every launch site, highlighting the selected one.
+  // ---------------------------------------------------------------------------
+
+  function drawPads() {
+
+    const selectedPad = current.launch?.pad;
+
+    // Make sure the current launch's pad is shown even if it isn't in the list
+    // (for example, a real launch from Yosry's data at a site we didn't list)
+    const allPads = [...pads];
+
+    if (selectedPad && !allPads.some((p) => samePad(p, selectedPad))) {
+      allPads.push(selectedPad);
+    }
+
+    // globe.gl needs the "selected" flag on each item to pick colour and size
+    const labelItems = allPads.map((p) => ({
+      lat: p.lat,
+      lon: p.lon,
+      name: p.name,
+      selected: samePad(p, selectedPad),
+      pad: p, // the original pad, passed back on click
+    }));
+
+    globe.labelsData(labelItems);
+  }
 
 
   // ---------------------------------------------------------------------------
@@ -443,13 +502,23 @@ export function createGlobe(container, { onTick } = {}) {
       // Stop spinning so the user can look at the launch
       globe.controls().autoRotate = false;
 
-      // Pad label and pulsing rings
-      globe.labelsData([launch.pad]);
+      // Highlight the selected site, and pulse rings around it
+      drawPads();
       globe.ringsData([launch.pad]);
 
       drawPath();
       flyTo(trajectory);
       playAscent();
+    },
+
+
+    // -------------------------------------------------------------------------
+    // Show every launch site on the globe as a clickable label.
+    // pads: a list of { id, name, lat, lon }
+    // -------------------------------------------------------------------------
+    setPads(newPads) {
+      pads = newPads;
+      drawPads();
     },
 
 

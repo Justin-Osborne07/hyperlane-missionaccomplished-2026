@@ -348,6 +348,61 @@ html, body {
 }
 
 
+/* ---------- Launch site + orbit pickers ---------- */
+
+/* Second heading inside the same block ("Target orbit") */
+.block .sub-heading {
+  margin-top: 20px;
+}
+
+/* Site buttons: a wrapping row of pills */
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Orbit buttons: three equal-width pills in one row */
+.choices-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* One pill button */
+.choice {
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ice);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.choice:hover {
+  border-color: var(--mist);
+}
+
+.choice:focus-visible {
+  outline: 2px solid var(--plume);
+  outline-offset: 3px;
+}
+
+/* The selected one: filled orange */
+.choice[aria-pressed='true'] {
+  background: var(--plume);
+  border-color: var(--plume);
+  color: var(--night);
+}
+
+.hint {
+  margin: 14px 0 0;
+  font-size: 13px;
+}
+
+
 /* ---------- Weather card ---------- */
 .wx-status {
   display: flex;
@@ -415,6 +470,21 @@ html, body {
 .wx-stat span {
   color: var(--mist);
   font-size: 12px;
+}
+
+/* Shown instead of the card while loading, or if there's no forecast */
+.wx-message {
+  margin: 0;
+  color: var(--mist);
+  font-size: 14px;
+}
+
+/* Small honesty note under the card */
+.wx-note {
+  margin: 12px 0 0;
+  color: var(--mist);
+  font-size: 12px;
+  opacity: 0.8;
 }
 
 /* Which colour the dot uses for each rating */

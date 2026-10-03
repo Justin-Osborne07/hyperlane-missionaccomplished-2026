@@ -1,13 +1,17 @@
 // =============================================================================
-// placeholders/weather-card.js  (temporary, written by Colby)
+// placeholders/weather-card.js  (written by Colby)
 // -----------------------------------------------------------------------------
-// Draws the weather card in the side panel from a `weather` object, so the
-// dashboard looks complete while Justin works on the real weather data.
+// Draws the weather card in the side panel, styled to match the dashboard.
 //
-// It does NOT fetch or score weather. That's Justin's job, and he doesn't need
-// to change anything for this file. When his code is ready:
-//   - if he only produces the weather object, pass it to renderWeather() in main.js, or
-//   - if he builds his own card, use his instead and delete this file.
+// The DATA now comes from Justin's weather.js (getWeather + scoreWeather).
+// This file only handles how it looks. Justin also wrote his own card in
+// src/weather-card.js (renderWeatherCard); if the team prefers his, swap the
+// one line marked in main.js.
+//
+// Handles three situations:
+//   - weather object  -> full card (rating, reasons, stats)
+//   - null            -> a message, e.g. "Forecast not available yet"
+//   - still loading   -> call renderWeather(el, null, 'Loading forecast…')
 //
 // Expected weather object (from the team's data contract):
 //
@@ -23,21 +27,31 @@
 const TITLES = {
   green: 'Good to launch',
   yellow: 'Marginal',
-  red: 'Likely scrub',
+  red: 'Likely postponed',
 };
 
 
 // -----------------------------------------------------------------------------
-// renderWeather(el, wx)
-// Fill the element `el` with the weather card for the weather object `wx`.
+// renderWeather(el, wx, message)
+//
+//   el:       the element to draw the card into
+//   wx:       a weather object, or null if there isn't one (yet)
+//   message:  what to show when wx is null
 //
 // The class "wx-green" / "wx-yellow" / "wx-red" sets the dot's colour
 // (see the weather card section in style.css).
 // -----------------------------------------------------------------------------
 
-export function renderWeather(el, wx) {
+export function renderWeather(el, wx, message = 'Forecast not available yet') {
 
-  // One <li> per reason, e.g. "Light winds"
+  // --- No weather: show the message instead of a card ---
+  if (!wx) {
+    el.innerHTML = `<p class="wx-message">${message}</p>`;
+    return;
+  }
+
+
+  // One <li> per reason, e.g. "Strong wind gusts could affect launch conditions (24 kt)"
   const reasonsHTML = wx.reasons
     .map((reason) => `<li>${reason}</li>`)
     .join('');
@@ -72,5 +86,7 @@ export function renderWeather(el, wx) {
       </div>
 
     </div>
+
+    <p class="wx-note">Simplified indicator using our demo thresholds, not official launch rules.</p>
   `;
 }

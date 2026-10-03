@@ -3,14 +3,17 @@
 // -----------------------------------------------------------------------------
 // The "glue" file. It runs when the page loads and connects everything:
 //
-//   1. Gets the data (mock data for now)
-//   2. Creates the globe and the ascent timeline
-//   3. Fills in the hero (countdown + mission name) and the side panel
-//   4. Hooks up the buttons
+//   1. Data and settings
+//   2. The ascent timeline (bottom of the screen)
+//   3. The globe
+//   4. Launch site + orbit pickers (side panel)
+//   5. selectLaunch(): switches the whole page to a new launch
+//   6. Buttons and developer tools
 //
-// Yosry and Justin don't need to change their work to fit this file. When
-// their code is ready, look for the "PLUG-IN POINT" comments below; each one
-// is a single line to swap.
+// Whose code is used where:
+//   - Justin: launch sites, live weather, weather scoring, viewing zones
+//   - Yosry:  still mock for now (launch data, trajectory, countdown).
+//             Look for "PLUG-IN POINT (Yosry)" when his code is ready.
 // =============================================================================
 
 
@@ -20,32 +23,25 @@ import { createGlobe } from './globe.js';
 import { startCountdown } from './placeholders/countdown.js';
 import { renderWeather } from './placeholders/weather-card.js';
 
+// Justin's code
+import { launchPads } from './launch-pads.js';
+import { getWeather } from './weather.js';
+import { getViewingZones } from './visibility.js';
+import { mockWeather as testWeather } from './mock-weather.js';
+
+// Still mock (waiting on Yosry's launch data and trajectory)
 import {
-  mockLaunch,
-  mockTrajectory,
-  mockWeather,
-  mockZones,
+  ORBITS,
+  buildDemoLaunch,
+  makeMockTrajectory,
 } from './mock-data.js';
 
 
 // =============================================================================
-// 1. DATA
+// 1. DATA AND SETTINGS
 // =============================================================================
 
-// PLUG-IN POINT (Yosry): replace with his real launch, e.g. await getNextLaunch()
-const launch = mockLaunch;
-
-// PLUG-IN POINT (Yosry): replace with getTrajectory(launch)
-const trajectory = mockTrajectory;
-
-// PLUG-IN POINT (Justin): replace with his real weather, e.g. await getWeather(launch)
-let weather = mockWeather;
-
-// PLUG-IN POINT (Justin): replace with getViewingZones(trajectory)
-const zones = mockZones;
-
-
-// Key moments in a Falcon 9 ascent, in seconds after liftoff (approximate).
+// Key moments in a typical ascent, in seconds after liftoff (approximate).
 // These become the dots on the timeline at the bottom of the screen.
 const EVENTS = [
 
@@ -61,6 +57,30 @@ const EVENTS = [
   // satellite reaches orbit
   { t: 540, label: 'Orbit insertion' },
 ];
+
+
+// What's currently selected. Canso is first in Justin's list, so it's the default.
+const state = {
+  pad: launchPads[0],
+  orbit: 'LEO',
+
+  // filled in by selectLaunch()
+  launch: null,
+  trajectory: [],
+  weather: null,
+  zones: [],
+
+  // whether the viewing-zone circles are switched on
+  zonesOn: false,
+};
+
+
+// Function that stops the running countdown (startCountdown returns one)
+let stopCountdown = null;
+
+// Counts weather requests, so a slow old request can't overwrite a newer one
+// (e.g. if someone clicks Canso, then quickly clicks Cape)
+let weatherRequestId = 0;
 
 
 // =============================================================================
@@ -81,37 +101,43 @@ function fmtMET(seconds) {
 }
 
 
+// Shorten a site name for buttons: "Canso — Spaceport Nova Scotia, NS" -> "Canso"
+const shortName = (name) => name.split(/\s+—\s+|,/)[0].trim();
+
+
 // =============================================================================
 // 2. ASCENT TIMELINE (bottom of the screen)
 // =============================================================================
 
-// Total flight time = the time of the last trajectory point
-const tMaxFlight = trajectory[trajectory.length - 1].t;
-
-
-// Create one marker per event, positioned along the track as a percentage.
+// Draw one marker per event, positioned along the track as a percentage of
+// the total flight time. Called again whenever the launch changes.
 //
 // The first marker is left-aligned and the last right-aligned (CSS classes
 // "first" / "last") so their labels don't hang off the edges.
-const eventHTML = EVENTS.map((e, i) => {
+let eventEls = [];
 
-  let cls = '';
+function drawTimeline(tMaxFlight) {
 
-  if (i === 0) {
-    cls = 'first';
-  } else if (i === EVENTS.length - 1) {
-    cls = 'last';
-  }
+  const eventHTML = EVENTS.map((e, i) => {
 
-  const leftPercent = (e.t / tMaxFlight) * 100;
+    let cls = '';
 
-  return `<span class="event ${cls}" style="left:${leftPercent}%">${e.label}</span>`;
-});
+    if (i === 0) {
+      cls = 'first';
+    } else if (i === EVENTS.length - 1) {
+      cls = 'last';
+    }
 
-$('track-events').innerHTML = eventHTML.join('');
+    const leftPercent = Math.min((e.t / tMaxFlight) * 100, 100);
 
-// Keep a list of the marker elements so we can light them up later
-const eventEls = [...document.querySelectorAll('.event')];
+    return `<span class="event ${cls}" style="left:${leftPercent}%">${e.label}</span>`;
+  });
+
+  $('track-events').innerHTML = eventHTML.join('');
+
+  // Keep a list of the marker elements so we can light them up later
+  eventEls = [...document.querySelectorAll('.event')];
+}
 
 
 // Called by the globe on every animation frame (via onTick) with the rocket's
@@ -133,7 +159,7 @@ function updateFlight(simT, tMax) {
     const passed = simT >= e.t;
 
     // "passed" turns the dot orange (see style.css)
-    eventEls[i].classList.toggle('passed', passed);
+    eventEls[i]?.classList.toggle('passed', passed);
 
     if (passed) {
       current = e;
@@ -146,12 +172,22 @@ function updateFlight(simT, tMax) {
 
 
 // =============================================================================
-// GLOBE
+// 3. GLOBE
 // =============================================================================
 
-// Create the globe inside the #globe div,
-// and tell it to call updateFlight on every animation frame
-const globe = createGlobe($('globe'), { onTick: updateFlight });
+// Create the globe inside the #globe div.
+//   onTick:     keeps the timeline in sync with the rocket
+//   onPadClick: clicking a site on the globe switches to it
+const globe = createGlobe($('globe'), {
+  onTick: updateFlight,
+  onPadClick: (pad) => {
+    state.pad = pad;
+    selectLaunch();
+  },
+});
+
+// Show all of Justin's launch sites on the globe
+globe.setPads(launchPads);
 
 
 // Respect the "reduce motion" accessibility setting: don't auto-spin the Earth
@@ -162,55 +198,222 @@ if (reduceMotion) {
 }
 
 
-// Let the Earth spin for 1.5 seconds before flying to the launch (a nice intro)
-setTimeout(() => {
-  globe.showLaunch(launch, trajectory, weather);
-}, 1500);
-
-
 // =============================================================================
-// 3. HERO (top-left) AND SIDE PANEL
+// 4. LAUNCH SITE + ORBIT PICKERS (side panel)
 // =============================================================================
 
-// Mission name and rocket under the countdown
-$('mission-name').textContent = launch.name;
-$('mission-sub').textContent = `${launch.rocket} from ${launch.pad.name}`;
+// One button per launch site. aria-pressed marks the selected one,
+// which the CSS uses to highlight it.
+function drawSitePicker() {
+
+  const buttons = launchPads.map((pad) => {
+
+    const pressed = pad.id === state.pad.id;
+
+    return `
+      <button class="choice" data-pad="${pad.id}" aria-pressed="${pressed}">
+        ${shortName(pad.name)}
+      </button>`;
+  });
+
+  $('site-picker').innerHTML = buttons.join('');
+}
 
 
-// PLUG-IN POINT (Yosry): temporary countdown; swap for his when ready
-startCountdown(launch, {
-  timeEl: $('countdown-time'),
-  windowEl: $('window-line'),
+// One button per orbit type (LEO / Polar / SSO)
+function drawOrbitPicker() {
+
+  const buttons = Object.keys(ORBITS).map((key) => {
+
+    const pressed = key === state.orbit;
+
+    return `
+      <button class="choice" data-orbit="${key}" aria-pressed="${pressed}">
+        ${key}
+      </button>`;
+  });
+
+  $('orbit-picker').innerHTML = buttons.join('');
+}
+
+
+// Clicking a site button. We listen on the whole picker and check which
+// button was clicked ("event delegation"), because the buttons get redrawn.
+$('site-picker').addEventListener('click', (e) => {
+
+  const button = e.target.closest('[data-pad]');
+
+  if (!button) {
+    return;
+  }
+
+  state.pad = launchPads.find((p) => p.id === button.dataset.pad);
+  selectLaunch();
 });
 
 
-// Mission details list in the side panel.
-// Turns short orbit codes into readable names for the public.
-const ORBIT_NAMES = {
-  LEO: 'Low Earth orbit',
-  Polar: 'Polar orbit',
-  SSO: 'Sun-synchronous orbit',
-};
+// Clicking an orbit button
+$('orbit-picker').addEventListener('click', (e) => {
 
-const missionRows = [
-  ['Rocket', launch.rocket],
-  ['Launch site', launch.pad.name],
-  ['Target orbit', ORBIT_NAMES[launch.orbit] || launch.orbit],
-  ['Inclination', `${launch.inclination}°`],
-];
+  const button = e.target.closest('[data-orbit]');
 
-// <dt> = the label, <dd> = the value
-$('mission-details').innerHTML = missionRows
-  .map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`)
-  .join('');
+  if (!button) {
+    return;
+  }
 
-
-// PLUG-IN POINT (Justin): temporary weather card; works with his weather object as-is
-renderWeather($('weather-card'), weather);
+  state.orbit = button.dataset.orbit;
+  selectLaunch();
+});
 
 
 // =============================================================================
-// 4. BUTTONS AND CONTROLS
+// 5. selectLaunch()
+// -----------------------------------------------------------------------------
+// Switches the whole page to the currently selected site + orbit:
+// globe, timeline, countdown, mission details, weather, viewing zones.
+// =============================================================================
+
+function selectLaunch() {
+
+  // --- Build the launch and its flight path ---
+
+  // PLUG-IN POINT (Yosry): replace with his real launch for this site
+  state.launch = buildDemoLaunch(state.pad, state.orbit);
+
+  // PLUG-IN POINT (Yosry): replace with getTrajectory(state.launch)
+  state.trajectory = makeMockTrajectory(state.launch);
+
+  // Justin's viewing zones for this flight path
+  state.zones = getViewingZones(state.trajectory);
+
+  // Weather is unknown until the new forecast loads
+  state.weather = null;
+
+
+  const launch = state.launch;
+
+
+  // --- Pickers: highlight the selected buttons ---
+
+  drawSitePicker();
+  drawOrbitPicker();
+
+
+  // --- Timeline ---
+
+  const tMaxFlight = state.trajectory[state.trajectory.length - 1].t;
+  drawTimeline(tMaxFlight);
+
+
+  // --- Globe ---
+
+  globe.showLaunch(launch, state.trajectory, state.weather);
+
+  // Redraw the circles for the new path if they're switched on
+  if (state.zonesOn) {
+    globe.showZones(state.zones);
+  }
+
+
+  // --- Hero (top-left) ---
+
+  $('mission-name').textContent = launch.name;
+  $('mission-sub').textContent = `${launch.rocket} from ${launch.pad.name}`;
+
+  // PLUG-IN POINT (Yosry): temporary countdown; swap for his when ready.
+  // Stop the old countdown first so two don't run at once.
+  if (stopCountdown) {
+    stopCountdown();
+  }
+
+  stopCountdown = startCountdown(launch, {
+    timeEl: $('countdown-time'),
+    windowEl: $('window-line'),
+  });
+
+
+  // --- Mission details (side panel) ---
+
+  const missionRows = [
+    ['Rocket', launch.rocket],
+    ['Launch site', launch.pad.name],
+    ['Target orbit', ORBITS[launch.orbit]?.name || launch.orbit],
+    ['Inclination', `${launch.inclination}°`],
+  ];
+
+  // <dt> = the label, <dd> = the value
+  $('mission-details').innerHTML = missionRows
+    .map(([label, value]) => `<dt>${label}</dt><dd>${value}</dd>`)
+    .join('');
+
+
+  // --- Weather ---
+
+  // Switching launch always goes back to the live forecast
+  $('weather-test').value = 'live';
+
+  loadWeather();
+}
+
+
+// =============================================================================
+// REAL WEATHER (Justin's getWeather)
+// -----------------------------------------------------------------------------
+// getWeather() asks Open-Meteo for the forecast at the launch site, at the
+// launch time. It takes a moment, so we show "Loading" first.
+//
+// It can end three ways:
+//   - a weather object  -> show the card and recolour the flight path
+//   - null              -> launch is too far away (forecasts only go 16 days ahead)
+//   - an error          -> no internet, or the weather service is down
+//
+// To use Justin's own card instead of the styled one, replace the
+// renderWeather(...) calls below with renderWeatherCard(...) from './weather-card.js'.
+// =============================================================================
+
+const weatherEl = $('weather-card');
+
+async function loadWeather() {
+
+  // Give this request a number. If another request starts before this one
+  // finishes, this one's result is out of date and gets ignored.
+  weatherRequestId += 1;
+  const myId = weatherRequestId;
+
+  renderWeather(weatherEl, null, 'Loading forecast…');
+  globe.setWeather('none');
+
+  try {
+    const wx = await getWeather(state.launch);
+
+    // A newer request has started since; ignore this old result
+    if (myId !== weatherRequestId) {
+      return;
+    }
+
+    state.weather = wx;
+
+    if (wx) {
+      renderWeather(weatherEl, wx);
+      globe.setWeather(wx.rating);
+    } else {
+      renderWeather(weatherEl, null, 'Forecast not available yet. Check back closer to launch.');
+    }
+
+  } catch (err) {
+
+    if (myId !== weatherRequestId) {
+      return;
+    }
+
+    console.error('Weather failed to load:', err);
+    renderWeather(weatherEl, null, "Couldn't load the forecast. Check your internet connection.");
+  }
+}
+
+
+// =============================================================================
+// 6. BUTTONS AND DEVELOPER TOOLS
 // =============================================================================
 
 // "Replay ascent" restarts the rocket from the pad
@@ -226,13 +429,13 @@ const zonesBtn = $('toggle-zones');
 zonesBtn.addEventListener('click', () => {
 
   // Flip the current state
-  const on = zonesBtn.getAttribute('aria-pressed') !== 'true';
+  state.zonesOn = !state.zonesOn;
 
-  zonesBtn.setAttribute('aria-pressed', String(on));
+  zonesBtn.setAttribute('aria-pressed', String(state.zonesOn));
 
-  if (on) {
+  if (state.zonesOn) {
     zonesBtn.textContent = 'Hide viewing zones';
-    globe.showZones(zones);
+    globe.showZones(state.zones);
   } else {
     zonesBtn.textContent = 'Show viewing zones';
     globe.clearZones();
@@ -240,42 +443,37 @@ zonesBtn.addEventListener('click', () => {
 });
 
 
-// Developer tools: fake weather for each rating, so we can test the card and
-// the path colour without waiting for real bad weather.
-// Remove before judging if you like.
-const TEST_WEATHER = {
-
-  green: mockWeather,
-
-  yellow: {
-    rating: 'yellow',
-    reasons: ['Gusts near the limit', 'Thick cloud layer'],
-    windKt: 16,
-    gustKt: 24,
-    cloudPct: 75,
-    precipMm: 0.2,
-    cape: 400,
-  },
-
-  red: {
-    rating: 'red',
-    reasons: ['Thunderstorms nearby', 'Gusts above 30 kt'],
-    windKt: 22,
-    gustKt: 34,
-    cloudPct: 95,
-    precipMm: 4,
-    cape: 1400,
-  },
-};
-
+// Developer tools: switch between the live forecast and Justin's test
+// weather for each rating, so we can check the card and path colour without
+// waiting for real bad weather. Remove before judging if you like.
 $('weather-test').addEventListener('change', (e) => {
 
-  // Pick the fake weather for the chosen rating
-  weather = TEST_WEATHER[e.target.value];
+  const choice = e.target.value;
 
-  // Update the card
-  renderWeather($('weather-card'), weather);
+  // "live" goes back to the real forecast
+  if (choice === 'live') {
+    loadWeather();
+    return;
+  }
 
-  // Recolour the flight path
-  globe.setWeather(weather.rating);
+  // Cancel any forecast still loading, so it doesn't overwrite the test weather
+  weatherRequestId += 1;
+
+  // Use Justin's test weather for that rating
+  state.weather = testWeather[choice];
+
+  renderWeather(weatherEl, state.weather);
+  globe.setWeather(state.weather.rating);
 });
+
+
+// =============================================================================
+// START
+// =============================================================================
+
+// Draw the pickers right away so the panel isn't empty
+drawSitePicker();
+drawOrbitPicker();
+
+// Let the Earth spin for 1.5 seconds, then fly to the default launch (Canso)
+setTimeout(selectLaunch, 1500);

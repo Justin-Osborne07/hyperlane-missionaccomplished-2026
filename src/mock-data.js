@@ -50,6 +50,42 @@ export const mockLaunch = {
 
 
 // =============================================================================
+// DEMO LAUNCHES FOR ANY SITE  (temporary, until Yosry's real launch list)
+// -----------------------------------------------------------------------------
+// Builds a launch object (same shape as mockLaunch) for any launch site and
+// target orbit, so we can switch between Justin's launch sites.
+// =============================================================================
+
+// The three orbit types from the challenge brief, with their inclinations
+export const ORBITS = {
+  LEO: { name: 'Low Earth orbit', inclination: 45.1 },
+  Polar: { name: 'Polar orbit', inclination: 90 },
+  SSO: { name: 'Sun-synchronous orbit', inclination: 98.1 },
+};
+
+// pad:      one entry from Justin's launch-pads.js ({ id, name, lat, lon })
+// orbitKey: 'LEO' | 'Polar' | 'SSO'
+export function buildDemoLaunch(pad, orbitKey = 'LEO') {
+
+  const orbit = ORBITS[orbitKey];
+
+  return {
+    id: `demo-${pad.id}-${orbitKey}`,
+    name: `${orbit.name} demo mission`,
+    rocket: 'Demo rocket',
+
+    // window opens in 3 hours and closes in 4 hours (close enough for a real forecast)
+    windowStart: new Date(Date.now() + 3 * ONE_HOUR_MS).toISOString(),
+    windowEnd: new Date(Date.now() + 4 * ONE_HOUR_MS).toISOString(),
+
+    pad: pad,
+    orbit: orbitKey,
+    inclination: orbit.inclination,
+  };
+}
+
+
+// =============================================================================
 // TRAJECTORY  (Yosry's shape)  ->  [{ t, lat, lon, altKm }, ...]
 // -----------------------------------------------------------------------------
 // TEMPORARY stand-in for Yosry's getTrajectory(launch).
@@ -70,8 +106,12 @@ export function makeMockTrajectory(launch, steps = 80) {
   const rawRatio = Math.cos(toRad(launch.inclination)) / Math.cos(phi);
   const ratio = Math.max(-1, Math.min(1, rawRatio));
 
-  // About 54 degrees (north-east) for this mock launch
-  const az = Math.asin(ratio);
+  // There are two directions that reach the same inclination: one heading
+  // north-ish and one heading south-ish. Low orbits (like LEO) head north-east.
+  // Polar and sun-synchronous orbits (above 80°) head south, which is what
+  // real spaceports do so the rocket flies over the ocean.
+  const northAz = Math.asin(ratio);
+  const az = launch.inclination > 80 ? Math.PI - northAz : northAz;
 
 
   // How far downrange the path goes, in km
