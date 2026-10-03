@@ -14,8 +14,10 @@
 //   replay()                                 -> restart the rocket animation
 //   showViewingAreas(areas) / clearZones()   -> the three viewing zones (bonus)
 //   showSpots(spots) / flyToSpot(spot)       -> viewing spot pins (bonus)
-//   setCameraMode('globe' | 'side')          -> normal globe view, or a side-on
-//                                               view at ground level showing the arc
+//   setCameraMode('globe' | 'side' | 'cockpit')
+//                                            -> normal globe view, a side-on view
+//                                               showing the arc, or the view out of
+//                                               the rocket's side window
 //   showZones(zones)                         -> older circle-style zones (unused now)
 //
 // Keeping it this way means the rest of the team can change their code freely
@@ -518,6 +520,7 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
 
     rig = {
       rocket: rocket,
+      height: model.height,   // metres, used to find the capsule for Cockpit view
       root: root,
       lower: model.lower,
       upper: model.upper,
@@ -713,6 +716,80 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
 
     rig.lowerFlame.scale.set(1, flicker, 1);
     rig.upperFlame.scale.set(1, flicker, 1);
+
+
+    // --- Cockpit view: put the camera at the rocket's window ---
+
+    if (cameraMode === 'cockpit') {
+      placeCockpitCamera(traj, simT, sepT);
+    }
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // placeCockpitCamera(traj, simT, sepT)
+  // Puts the camera just outside the capsule's side window, looking out
+  // sideways and a little down towards the Earth.
+  //
+  // The camera's "up" is the rocket's nose direction, like a real window
+  // fixed to the rocket. So at liftoff the horizon is level, and as the
+  // rocket pitches over towards horizontal, the horizon tilts in the window.
+  //
+  // The camera shakes at liftoff and at stage separation.
+  // ---------------------------------------------------------------------------
+
+  const camUp = new THREE.Vector3();
+  const camForward = new THREE.Vector3();
+  const shake = new THREE.Vector3();
+
+  function placeCockpitCamera(traj, simT, sepT) {
+
+    // "Up" at the rocket's position (pointing away from the Earth's centre)
+    const localUp = posNow.clone().normalize();
+
+    // The direction along the ground the flight heads in overall
+    // (start to end of the trajectory, flattened along the ground)
+    const first = traj[0];
+    const last = traj[traj.length - 1];
+    const startPos = toVec(globe.getCoords(first.lat, first.lon, 0));
+    const endPos = toVec(globe.getCoords(last.lat, last.lon, 0));
+    const along = endPos.sub(startPos);
+    along.addScaledVector(localUp, -along.dot(localUp)).normalize();
+
+    // Out of the window: sideways, at right angles to the flight direction
+    const side = new THREE.Vector3().crossVectors(along, localUp).normalize();
+
+    // Look out sideways, tilted 15° down towards the Earth
+    const tilt = 15 * (Math.PI / 180);
+    camForward.copy(side).multiplyScalar(Math.cos(tilt))
+      .addScaledVector(localUp, -Math.sin(tilt))
+      .normalize();
+
+    // The window sits near the top of the rocket (the capsule) on its side
+    const capsuleHeight = rig.height * 0.82 * ROCKET_SIZE;
+
+    camera.position.copy(posNow)
+      .addScaledVector(travelDir, capsuleHeight)
+      .addScaledVector(side, 0.6);
+
+    // Shake: strong at liftoff (fading over 35 s), plus a jolt at separation
+    const strength =
+      0.05 * Math.max(0, 1 - simT / 35) +
+      0.08 * Math.exp(-Math.abs(simT - sepT) / 4);
+
+    shake.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
+      .multiplyScalar(strength);
+
+    camera.position.add(shake);
+
+    // Camera "up" = the rocket's nose direction, straightened so it's at
+    // right angles to where the camera looks
+    camUp.copy(travelDir).addScaledVector(camForward, -travelDir.dot(camForward)).normalize();
+    camera.up.copy(camUp);
+
+    // Look out of the window
+    lookPoint.copy(camera.position).addScaledVector(camForward, 10);
+    camera.lookAt(lookPoint);
   }
 
 
@@ -876,6 +953,14 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
   // ---------------------------------------------------------------------------
 
   function flyTo(trajectory) {
+
+    // Cockpit view: the camera rides with the rocket, so updateRocket()
+    // places it every frame. Just stop any glide and switch the controls off.
+    if (cameraMode === 'cockpit') {
+      cancelAnimationFrame(camMoveId);
+      controls.enabled = false;
+      return;
+    }
 
     if (cameraMode === 'side') {
       moveCamera(sidePose(trajectory));
@@ -1121,8 +1206,8 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
     // -------------------------------------------------------------------------
     flyToSpot(spot) {
 
-      // Spots are shown from above, so leave side view first
-      if (cameraMode === 'side') {
+      // Spots are shown from above, so leave side view / cockpit first
+      if (cameraMode !== 'globe') {
         cameraMode = 'globe';
 
         if (onCameraChange) {
@@ -1139,7 +1224,8 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
 
 
     // -------------------------------------------------------------------------
-    // Switch camera mode: 'globe' (normal) or 'side' (see the arc side-on)
+    // Switch camera mode: 'globe' (normal), 'side' (see the arc side-on)
+    // or 'cockpit' (look out of the rocket's window)
     // -------------------------------------------------------------------------
     setCameraMode(mode) {
 

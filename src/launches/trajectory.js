@@ -32,15 +32,16 @@ export function getLaunchAzimuth(launch) {
     const latRad = lat * Math.PI / 180;
     const incRad = inc * Math.PI / 180;
 
-    const value = Math.cos(incRad) / Math.cos(latRad);
-
-    if (Math.abs(value) > 1) {
-        return null;
-    }
+    // Clamp to the range asin accepts. If the orbit's inclination is lower
+    // than the pad's latitude, this gives due east, the closest it can get.
+    const value = Math.max(-1, Math.min(1, Math.cos(incRad) / Math.cos(latRad)));
 
     const azimuthRad = Math.asin(value);
+    const azimuth = azimuthRad * 180 / Math.PI;
 
-    return azimuthRad * 180 / Math.PI;
+    // Each inclination can be reached heading north or heading south.
+    // Polar and sun-synchronous launches head south, over the ocean.
+    return inc > 80 ? 180 - azimuth : azimuth;
 }
 export function getTrajectory(launch) {
     const trajectory = [];
@@ -60,7 +61,8 @@ export function getTrajectory(launch) {
     for (let i = 0; i < totalPoints; i++) {
         const fraction = i / (totalPoints - 1);
 
-        const distanceKm = totalDistanceKm * fraction;
+        // Slow at first, then faster, like a real launch
+        const distanceKm = totalDistanceKm * Math.pow(fraction, 1.6);
 
         const point = getDestinationPoint(
             startLat,
@@ -69,7 +71,8 @@ export function getTrajectory(launch) {
             distanceKm
         );
 
-        const altitudeKm = 200 * fraction;
+        // Climbs steeply off the pad, then levels off near orbit
+        const altitudeKm = 200 * (1 - Math.pow(1 - fraction, 2.5));
 
         trajectory.push({
             t: i * 5,

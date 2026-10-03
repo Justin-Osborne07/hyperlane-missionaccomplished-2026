@@ -16,9 +16,8 @@
 //
 // Whose code is used where:
 //   - Yosry:  real upcoming launches (launch-api.js, connected through
-//             launch-adapter.js). His trajectory.js and countdown.js are still
-//             empty, so the mock flight path and placeholder countdown are used
-//             for now. Look for "PLUG-IN POINT (Yosry)".
+//             launch-adapter.js), the flight path (trajectory.js) and the
+//             countdown timing (countdown.js).
 //   - Justin: launch sites, live weather, weather scoring
 //   - Colby:  globe, rockets, viewing areas + viewing spots (built on the same
 //             horizon idea as Justin's visibility.js)
@@ -28,6 +27,7 @@
 import './style.css';
 
 import { createGlobe } from './visualization/globe.js';
+import { createCockpit } from './visualization/cockpit.js';
 import { ROCKETS, rocketFor, findRocket } from './visualization/rockets.js';
 import { startCountdown } from './placeholders/countdown.js';
 import { renderWeather } from './placeholders/weather-card.js';
@@ -43,7 +43,10 @@ import { viewingSpots, siteNotes } from './launches/viewing-spots.js';
 // Real launches through the caching adapter
 import { loadUpcomingLaunches } from './launches/launch-adapter.js';
 
-// Demo launches and temporary flight paths
+// Yosry's flight path
+import { getTrajectory } from './launches/trajectory.js';
+
+// Demo launches, plus the older flight path used as a backup
 import {
     ORBITS,
     buildDemoLaunch,
@@ -180,6 +183,76 @@ function updateFlight(simT, tMax) {
 
   // Phase name above the track, e.g. "Max Q"
   $('phase').textContent = current.label;
+
+  // Cockpit view instruments (does nothing while the cockpit is hidden)
+  const { altKm, speedKmS } = telemetryAt(simT);
+
+  cockpit.update({
+    altKm,
+    speedKmS,
+    simT,
+    tMax,
+    events: EVENTS,
+    sepT: rocketFor(state.launch?.rocket).separationT,
+  });
+}
+
+
+// -----------------------------------------------------------------------------
+// telemetryAt(simT)
+// Altitude and speed at flight time simT, worked out from the trajectory,
+// for the cockpit dials.
+//
+// Speed = distance travelled in one second. We find the rocket's 3D position
+// one second either side of simT and divide the distance by 2 seconds.
+// -----------------------------------------------------------------------------
+
+const EARTH_R_KM = 6371;
+
+function telemetryAt(simT) {
+
+  const traj = state.trajectory;
+
+  if (traj.length < 2) {
+    return { altKm: 0, speedKmS: 0 };
+  }
+
+  // Position (lat, lon, altitude) at any time, blending between trajectory points
+  const pointAt = (t) => {
+
+    let i = traj.findIndex((p) => p.t >= t);
+
+    if (i <= 0) {
+      return i === 0 ? traj[0] : traj[traj.length - 1];
+    }
+
+    const a = traj[i - 1];
+    const b = traj[i];
+    const f = (t - a.t) / (b.t - a.t);
+
+    return {
+      lat: a.lat + (b.lat - a.lat) * f,
+      lon: a.lon + (b.lon - a.lon) * f,
+      altKm: a.altKm + (b.altKm - a.altKm) * f,
+    };
+  };
+
+  // Turn lat/lon/altitude into an x, y, z position in km from the Earth's centre
+  const toXYZ = (p) => {
+    const r = EARTH_R_KM + p.altKm;
+    const lat = (p.lat * Math.PI) / 180;
+    const lon = (p.lon * Math.PI) / 180;
+    return [r * Math.cos(lat) * Math.cos(lon), r * Math.cos(lat) * Math.sin(lon), r * Math.sin(lat)];
+  };
+
+  const before = toXYZ(pointAt(simT - 1));
+  const after = toXYZ(pointAt(simT + 1));
+  const distance = Math.hypot(after[0] - before[0], after[1] - before[1], after[2] - before[2]);
+
+  return {
+    altKm: pointAt(simT).altKm,
+    speedKmS: distance / 2,
+  };
 }
 
 
@@ -206,20 +279,26 @@ const globe = createGlobe($('globe'), {
     selectLaunch();
   },
   onSpotClick: (spot) => focusSpot(spot),
-  onCameraChange: (mode) => drawCameraSwitch(mode),
+  onCameraChange: (mode) => applyCameraUI(mode),
 });
 
 
+// The cockpit overlay (window frame, dials, plush toy), shown in Cockpit view
+const cockpit = createCockpit($('app'));
+
+
 // -----------------------------------------------------------------------------
-// Camera view switch: "Globe view" / "Side view"
+// Camera view switch: "Globe view" / "Side view" / "Cockpit"
 // -----------------------------------------------------------------------------
-// Two buttons next to the mission clock, above the ascent timeline.
-// Side view looks across the flight path from near the ground, so you can see
-// the arc of the climb. In side view: drag to orbit, scroll to zoom.
+// Buttons next to the mission clock, above the ascent timeline.
+//   Side view: looks across the flight path from near the ground, so you can
+//              see the arc of the climb. Drag to orbit, scroll to zoom.
+//   Cockpit:   rides inside the rocket, looking out of a side window.
 
 const CAMERA_VIEWS = [
   { mode: 'globe', label: 'Globe view', hint: 'See the whole flight path from space' },
   { mode: 'side', label: 'Side view', hint: 'See the arc from the side. Drag to orbit, scroll to zoom' },
+  { mode: 'cockpit', label: 'Cockpit', hint: 'Look out of the window from inside the rocket' },
 ];
 
 // Create the button group once and add it to the timeline header
@@ -249,6 +328,14 @@ function drawCameraSwitch(activeMode) {
 drawCameraSwitch('globe');
 
 
+// Update everything that depends on the camera mode: the buttons, and the
+// cockpit overlay (only shown in Cockpit view)
+function applyCameraUI(mode) {
+  drawCameraSwitch(mode);
+  cockpit.setVisible(mode === 'cockpit');
+}
+
+
 // Clicking a view button
 cameraSwitch.addEventListener('click', (e) => {
 
@@ -261,7 +348,7 @@ cameraSwitch.addEventListener('click', (e) => {
   const mode = button.dataset.cam;
 
   globe.setCameraMode(mode);
-  drawCameraSwitch(mode);
+  applyCameraUI(mode);
 
   // Side view replaces any spot close-up, so hide "Back to launch view"
   $('back-to-launch').hidden = true;
@@ -442,10 +529,16 @@ function selectLaunch() {
     state.launch = buildDemoLaunch(state.pad, state.orbit, state.rocket.name);
   }
 
-  // PLUG-IN POINT (Yosry): replace with getTrajectory(state.launch) when his
-  // trajectory.js is ready. The mock works for real launches too, because it
-  // only needs the pad position and the inclination.
-  state.trajectory = makeMockTrajectory(state.launch);
+  // Yosry's flight path for this launch
+  state.trajectory = getTrajectory(state.launch);
+
+  // Safety net: his function returns an empty list when it can't work out a
+  // launch direction (for example an orbit tilted less than the launch
+  // site's latitude). Fall back to the older demo path so the page still works.
+  if (state.trajectory.length < 2) {
+    console.warn('getTrajectory returned no path, using the demo path for', state.launch.name);
+    state.trajectory = makeMockTrajectory(state.launch);
+  }
 
   // The three viewing zones for this flight path (see viewing-areas.js)
   state.areas = getViewingAreas(state.trajectory, state.launch.pad);
@@ -474,7 +567,14 @@ function selectLaunch() {
   globe.setRocket(rocket);
 
   // This rocket's own event timings for the timeline
-  EVENTS = rocket.events;
+  // "Orbit insertion" (the last event) is moved to the very end of the
+  // flight path, whatever its length, so it lines up with the moment the
+  // rocket reaches orbit.
+  const flightEnd = state.trajectory[state.trajectory.length - 1].t;
+
+  EVENTS = rocket.events.map((e, i) =>
+    i === rocket.events.length - 1 ? { ...e, t: flightEnd } : e
+  );
 
 
   // --- Timeline ---
@@ -505,7 +605,7 @@ function selectLaunch() {
   $('mission-name').textContent = launch.name;
   $('mission-sub').textContent = `${launch.rocket} from ${launch.pad.name}`;
 
-  // PLUG-IN POINT (Yosry): temporary countdown; swap for his when ready.
+  // Countdown: Yosry's getCountdown() timing, shown by placeholders/countdown.js.
   // Stop the old countdown first so two don't run at once.
   if (stopCountdown) {
     stopCountdown();

@@ -86,6 +86,9 @@ html, body {
 /* ---------- Hero: countdown + mission name (top-left) ---------- */
 .hero {
   position: fixed;
+
+  /* above the cockpit overlay */
+  z-index: 2;
   top: 32px;
   left: var(--edge);
   max-width: 34rem;
@@ -160,6 +163,9 @@ html, body {
      row 2: the track (stretches) + the Replay button (on the right) */
 .flight {
   position: fixed;
+
+  /* above the cockpit overlay */
+  z-index: 2;
   left: var(--edge);
 
   /* stop before the side panel */
@@ -337,6 +343,7 @@ html, body {
 /* ---------- Side panel (right) ---------- */
 #panel {
   position: fixed;
+  z-index: 3;
   top: 0;
   right: 0;
   bottom: 0;
@@ -864,6 +871,242 @@ html, body {
 }
 
 
+/* ---------- Cockpit view overlay ----------
+   Covers the visible globe area (everything left of the side panel).
+   cockpit.js sets --cx, --cy (window centre) and --r (window radius).
+   pointer-events: none lets clicks pass through to the globe underneath. */
+.cockpit {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: var(--panel-w);
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+
+  --frame: 26px;   /* thickness of the metal window frame */
+}
+
+.cockpit[hidden] {
+  display: none;
+}
+
+/* Cabin wall: dark panels with seams and rivets, made from layered gradients.
+   The mask cuts a round hole (the window) out of it. */
+.cockpit-wall {
+  position: absolute;
+  inset: 0;
+
+  background:
+    /* rivets: a small light dot near the corner of every panel */
+    radial-gradient(circle at 14px 14px, rgba(255, 255, 255, 0.16) 2px, transparent 3px) 0 0 / 240px 180px,
+    /* vertical and horizontal seams between panels */
+    repeating-linear-gradient(90deg, transparent 0 238px, rgba(0, 0, 0, 0.45) 238px 240px),
+    repeating-linear-gradient(0deg, transparent 0 178px, rgba(0, 0, 0, 0.45) 178px 180px),
+    /* lighter in the middle, darker at the edges */
+    radial-gradient(ellipse at 50% 50%, #3b424c 0%, #252a31 60%, #15181d 100%);
+
+  -webkit-mask: radial-gradient(circle var(--r) at var(--cx) var(--cy), transparent calc(var(--r) - 0.5px), #000 var(--r));
+  mask: radial-gradient(circle var(--r) at var(--cx) var(--cy), transparent calc(var(--r) - 0.5px), #000 var(--r));
+}
+
+/* Glass: a dark inner edge (depth) and a faint diagonal glare */
+.cockpit-glass {
+  position: absolute;
+  left: calc(var(--cx) - var(--r));
+  top: calc(var(--cy) - var(--r));
+  width: calc(var(--r) * 2);
+  height: calc(var(--r) * 2);
+  border-radius: 50%;
+  box-shadow: inset 0 0 70px rgba(0, 0, 0, 0.75);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.10) 0%, transparent 35%, transparent 70%, rgba(255, 255, 255, 0.04) 100%);
+}
+
+/* Metal frame: a ring made from a circle with its middle masked out */
+.cockpit-frame {
+  position: absolute;
+  left: calc(var(--cx) - var(--r) - var(--frame));
+  top: calc(var(--cy) - var(--r) - var(--frame));
+  width: calc((var(--r) + var(--frame)) * 2);
+  height: calc((var(--r) + var(--frame)) * 2);
+  border-radius: 50%;
+
+  /* brushed-metal look: a soft sweep of light and dark around the ring */
+  background: conic-gradient(from 210deg, #8b929c, #5a616b, #9aa1ab, #4c525b, #8b929c);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+
+  -webkit-mask: radial-gradient(closest-side, transparent calc(100% - var(--frame)), #000 calc(100% - var(--frame) + 1px));
+  mask: radial-gradient(closest-side, transparent calc(100% - var(--frame)), #000 calc(100% - var(--frame) + 1px));
+}
+
+/* Bolts around the frame. Each is rotated to its angle (--angle, set in
+   cockpit.js), then moved out to the middle of the ring. */
+.bolt {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #d7dbe0, #6b717a);
+  transform: rotate(var(--angle)) translateY(calc(-1 * (var(--r) + var(--frame) / 2)));
+}
+
+/* Little sign above the window */
+.cockpit-placard {
+  position: absolute;
+  left: var(--cx);
+  top: calc(var(--cy) - var(--r) - var(--frame) - 34px);
+  transform: translateX(-50%);
+  padding: 3px 12px;
+  font-size: 12px;
+  color: #2a2f36;
+  background: #c9c3b2;
+  border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
+
+/* ---------- Zero-g indicator (plush planet on a string) ----------
+   Hangs from the top of the window. cockpit.js swings and floats it by
+   changing its transform. transform-origin: top = it swings from the top. */
+.cockpit-plush {
+  position: absolute;
+  left: var(--cx);
+  top: calc(var(--cy) - var(--r) + 6px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform-origin: 50% 0;
+}
+
+.plush-string {
+  width: 2px;
+  height: 90px;
+  background: #d9d4c7;
+  transition: height 0.6s, opacity 0.6s;
+}
+
+/* In orbit the string goes slack */
+.cockpit-plush.is-floating .plush-string {
+  height: 60px;
+  opacity: 0.4;
+}
+
+.plush-toy {
+  width: 80px;
+  margin-top: -12px;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5));
+}
+
+
+/* ---------- Cockpit instrument panel (right of the window) ---------- */
+.cockpit-dash {
+  position: absolute;
+  right: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 210px;
+  padding: 14px;
+  background: linear-gradient(180deg, #23272e, #191c21);
+  border: 1px solid #3a3f47;
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+.cockpit-dash[hidden] {
+  display: none;
+}
+
+.dash-dials {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* One gauge */
+.dial {
+  width: 100%;
+}
+
+.dial-face {
+  fill: #0f1216;
+  stroke: #4a4f57;
+  stroke-width: 3;
+}
+
+.dial-ticks line {
+  stroke: #c9cdd3;
+  stroke-width: 1.5;
+}
+
+.dial-label {
+  fill: #8e9ac2;
+  font-family: var(--text);
+  font-size: 9px;
+}
+
+/* The needle turns around the dial's centre */
+.dial-needle {
+  stroke: var(--plume);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transform-origin: 50px 50px;
+}
+
+.dial-hub {
+  fill: #c9cdd3;
+}
+
+/* Digital numbers under the dials */
+.dash-readouts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 6px 0 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--mist);
+}
+
+.dash-readouts b {
+  display: block;
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 500;
+  color: #9fffb0;              /* green, like an old-style display */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Warning lamps: one per flight event, lit up once it has happened */
+.dash-lamps {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.lamp {
+  padding: 5px 4px;
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.2;
+  color: #6b7280;
+  background: #121519;
+  border: 1px solid #2c3137;
+  border-radius: 6px;
+  transition: color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+
+.lamp.on {
+  color: #1d1300;
+  background: var(--plume);
+  box-shadow: 0 0 12px rgba(255, 181, 71, 0.6);
+}
+
+
 /* ---------- Phones and narrow windows (860px wide or less) ----------
    Stop floating things over the globe. Instead: globe on top, timeline under
    it, then the panel, all in a normal scrolling column. */
@@ -929,6 +1172,14 @@ html, body {
 
   .brand {
     display: none;
+  }
+
+  /* Cockpit overlay covers just the globe at the top of the page */
+  .cockpit {
+    position: absolute;
+    right: 0;
+    bottom: auto;
+    height: 62vh;
   }
 
   /* Tabs bar on phones: match the smaller padding and the page background */

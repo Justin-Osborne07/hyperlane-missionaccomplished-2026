@@ -1,26 +1,20 @@
 // =============================================================================
-// placeholders/countdown.js  (temporary, written by Colby)
+// placeholders/countdown.js  (display by Colby, timing by Yosry)
 // -----------------------------------------------------------------------------
-// A simple countdown so the dashboard looks complete while Yosry builds his.
+// Draws the big countdown in the top-left of the page.
 //
-// It is NOT meant to replace Yosry's work. When his countdown is ready, either:
-//   - call his code from main.js instead of startCountdown(), and delete this file, or
-//   - keep this display and just feed it his launch data.
-// Whichever is easier for him.
-//
-// What it does: every second, it works out how long until the launch window
-// opens and writes it into the big countdown in the top-left of the page.
+// The TIMING comes from Yosry's getCountdown() in launches/countdown.js,
+// which works out whether the window is open, closed, or how many days,
+// hours, minutes and seconds are left. This file just shows the result,
+// once a second.
 // =============================================================================
+
+
+import { getCountdown } from '../launches/countdown.js';
 
 
 // Turns 7 into "07" so the clock always shows two digits per number
 const pad = (n) => String(n).padStart(2, '0');
-
-
-// Seconds in a day / hour / minute
-const DAY = 86400;
-const HOUR = 3600;
-const MINUTE = 60;
 
 
 // -----------------------------------------------------------------------------
@@ -61,25 +55,19 @@ export function startCountdown(launch, { timeEl, windowEl }) {
     timeEl.parentElement.classList.toggle('is-live', now >= start);
 
 
+    // Yosry's function does the maths
+    const countdown = getCountdown(launch.windowStart, launch.windowEnd);
+
+
     // --- Before the window opens ---
-    if (now < start) {
+    if (countdown.status === 'countdown') {
 
-      // Split the remaining seconds into days, hours, minutes, seconds
-      let s = Math.floor((start - now) / 1000);
-
-      const d = Math.floor(s / DAY);
-      s = s % DAY;
-
-      const h = Math.floor(s / HOUR);
-      s = s % HOUR;
-
-      const m = Math.floor(s / MINUTE);
-      s = s % MINUTE;
+      const { days, hours, minutes, seconds } = countdown;
 
       // Only show days if there is at least one,
       // e.g. "2d 04:12:09" or just "04:12:09"
-      const daysText = d > 0 ? `${d}d ` : '';
-      timeEl.textContent = `${daysText}${pad(h)}:${pad(m)}:${pad(s)}`;
+      const daysText = days > 0 ? `${days}d ` : '';
+      timeEl.textContent = `${daysText}${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 
       // Window length in minutes
       const lengthMin = Math.round((end - start) / 60000);
@@ -90,7 +78,7 @@ export function startCountdown(launch, { timeEl, windowEl }) {
 
 
     // --- During the window ---
-    else if (now <= end) {
+    else if (countdown.status === 'open') {
       timeEl.textContent = 'Window open';
       windowEl.textContent = `Closes ${fmt.format(end)}`;
     }
