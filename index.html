@@ -27,6 +27,7 @@
       <!-- The 3D globe is drawn inside this div by src/globe.js -->
       <div id="globe" aria-label="3D globe showing the launch trajectory"></div>
 
+
       <!-- HERO: big countdown and mission name, floating over the globe (top-left) -->
       <header class="hero">
         <p class="hero-label">Next launch</p>
@@ -39,18 +40,33 @@
         <p id="mission-sub" class="mission-sub"></p>
       </header>
 
+
       <!-- ASCENT TIMELINE: progress bar along the bottom, synced to the rocket animation -->
       <section class="flight" aria-label="Ascent timeline">
+
         <div class="flight-head">
-          <span id="phase" class="phase">Liftoff</span>   <!-- current event name -->
-          <span id="met" class="met">T+00:00</span>       <!-- time since liftoff -->
+
+          <!-- current event name -->
+          <span id="phase" class="phase">Liftoff</span>
+
+          <!-- time since liftoff -->
+          <span id="met" class="met">T+00:00</span>
+
         </div>
+
         <div class="track">
-          <div id="track-fill" class="track-fill"></div>    <!-- orange progress -->
-          <div id="track-events" class="track-events"></div> <!-- event dots, added by main.js -->
+
+          <!-- orange progress bar -->
+          <div id="track-fill" class="track-fill"></div>
+
+          <!-- event dots, added by main.js -->
+          <div id="track-events" class="track-events"></div>
+
         </div>
+
         <button id="replay" class="btn btn-ghost">Replay ascent</button>
       </section>
+
 
       <!-- SIDE PANEL (right) -->
       <aside id="panel">

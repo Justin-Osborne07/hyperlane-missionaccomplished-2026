@@ -16,53 +16,90 @@
 // without breaking the globe, and vice versa.
 // =============================================================================
 
+
 import Globe from 'globe.gl';
 import * as THREE from 'three';
 
-// ---------- Settings you can tweak ----------
 
-const EARTH_R_KM = 6371;     // Earth's radius in kilometres
-const ALT_SCALE = 3;         // Multiplies altitude so a 200 km climb is actually visible.
-                             // 1 = true scale (very flat), higher = more dramatic.
-const PLAYBACK_MS = 10000;   // How long the full ascent takes on screen (10 seconds)
-const PAUSE_MS = 1500;       // Pause at the end before the animation loops
+// =============================================================================
+// SETTINGS YOU CAN TWEAK
+// =============================================================================
+
+// Earth's radius in kilometres
+const EARTH_R_KM = 6371;
+
+// Multiplies altitude so a 200 km climb is actually visible.
+// 1 = true scale (very flat), higher = more dramatic.
+const ALT_SCALE = 3;
+
+// How long the full ascent takes on screen (10 seconds)
+const PLAYBACK_MS = 10000;
+
+// Pause at the end before the animation loops
+const PAUSE_MS = 1500;
 
 // Colour of the flight path for each weather rating
 const RATING_COLORS = {
   green: '#3ddc84',
   yellow: '#ffcc33',
   red: '#ff4d4d',
-  none: '#9fd3ff', // used before any weather data arrives
+
+  // used before any weather data arrives
+  none: '#9fd3ff',
 };
 
-// Earth textures (satellite photo, terrain bumps, starry background) hosted on a CDN
+// Earth textures (satellite photo, terrain bumps, starry background) hosted online
 const IMG = 'https://cdn.jsdelivr.net/npm/three-globe/example/img';
 
-// ---------- Small helper functions ----------
+
+// =============================================================================
+// SMALL HELPER FUNCTIONS
+// =============================================================================
 
 // Convert degrees <-> radians (JavaScript's Math functions use radians)
 const toRad = (d) => (d * Math.PI) / 180;
 const toDeg = (r) => (r * 180) / Math.PI;
 
-// globe.gl measures altitude in "Earth radii" (1 = one Earth radius above the surface),
-// not kilometres. This converts km to that unit and applies the exaggeration.
+// globe.gl measures altitude in "Earth radii" (1 = one Earth radius above the
+// surface), not kilometres. This converts km to that unit and applies the
+// exaggeration from ALT_SCALE.
 const altFromKm = (km) => (km / EARTH_R_KM) * ALT_SCALE;
+
 
 // =============================================================================
 // createGlobe(container, options)
-//   container: the HTML element to draw the globe inside (the #globe div)
-//   options.onTick(simT, tMax): optional function called every animation frame
-//     with the rocket's current flight time, so other parts of the page
-//     (like the ascent timeline) can stay in sync with the animation.
+// -----------------------------------------------------------------------------
+//   container:
+//     the HTML element to draw the globe inside (the #globe div)
+//
+//   options.onTick(simT, tMax):
+//     optional function called every animation frame with the rocket's
+//     current flight time, so other parts of the page (like the ascent
+//     timeline) can stay in sync with the animation.
 // =============================================================================
+
 export function createGlobe(container, { onTick } = {}) {
-  // The rocket is just a small glowing sphere. MeshBasicMaterial ignores lighting,
-  // so it always looks bright no matter which side of the Earth it's on.
-  const rocketMesh = new THREE.Mesh(
-    new THREE.SphereGeometry(1.1, 16, 16), // radius, then smoothness (segments)
-    new THREE.MeshBasicMaterial({ color: '#fff1d6' })
+
+  // ---------------------------------------------------------------------------
+  // The rocket
+  // ---------------------------------------------------------------------------
+  // Just a small glowing sphere. MeshBasicMaterial ignores lighting, so it
+  // always looks bright no matter which side of the Earth it's on.
+
+  const rocketGeometry = new THREE.SphereGeometry(
+    1.1,  // radius
+    16,   // smoothness around
+    16    // smoothness top-to-bottom
   );
 
+  const rocketMaterial = new THREE.MeshBasicMaterial({ color: '#fff1d6' });
+
+  const rocketMesh = new THREE.Mesh(rocketGeometry, rocketMaterial);
+
+
+  // ---------------------------------------------------------------------------
+  // Build the globe
+  // ---------------------------------------------------------------------------
   // globe.gl uses "method chaining": each .something() call configures one
   // setting and returns the globe again, so the calls can be stacked.
   //
@@ -71,15 +108,27 @@ export function createGlobe(container, { onTick } = {}) {
   //   - xxxData([...])  : the list of things to draw (starts empty, filled later)
   //   - accessor functions telling globe.gl where to find lat/lon/colour/etc.
   //     on each item in that list.
+
   const globe = Globe()(container)
+
     // --- The Earth itself ---
-    .globeImageUrl(`${IMG}/earth-blue-marble.jpg`)  // satellite photo of Earth
-    .bumpImageUrl(`${IMG}/earth-topology.png`)      // makes mountains look raised
-    .backgroundImageUrl(`${IMG}/night-sky.png`)     // stars behind the globe
-    .atmosphereColor('#8fb0ff')                     // blue glow around the edge
-    .atmosphereAltitude(0.18)                       // how thick that glow is
+
+    // satellite photo of Earth
+    .globeImageUrl(`${IMG}/earth-blue-marble.jpg`)
+
+    // makes mountains look raised
+    .bumpImageUrl(`${IMG}/earth-topology.png`)
+
+    // stars behind the globe
+    .backgroundImageUrl(`${IMG}/night-sky.png`)
+
+    // blue glow around the edge, and how thick it is
+    .atmosphereColor('#8fb0ff')
+    .atmosphereAltitude(0.18)
+
 
     // --- Launch pad label + dot ---
+
     .labelsData([])
     .labelLat((d) => d.lat)
     .labelLng((d) => d.lon)
@@ -89,182 +138,378 @@ export function createGlobe(container, { onTick } = {}) {
     .labelColor(() => 'rgba(230, 236, 255, 0.85)')
     .labelResolution(2)
 
+
     // --- Pulsing orange rings at the pad (like a radar ping) ---
+
     .ringsData([])
     .ringLat((d) => d.lat)
     .ringLng((d) => d.lon)
-    // ringColor returns a function of t (0 = ring just started, 1 = fully expanded),
-    // so the ring fades out as it grows.
+
+    // ringColor returns a function of t (0 = ring just started, 1 = fully
+    // expanded), so the ring fades out as it grows.
     .ringColor(() => (t) => `rgba(255, 181, 71, ${1 - t})`)
-    .ringMaxRadius(3)          // how far each ring expands (in degrees)
-    .ringPropagationSpeed(1.5) // how fast it expands
-    .ringRepeatPeriod(1200)    // a new ring every 1.2 seconds
+
+    // how far each ring expands (in degrees)
+    .ringMaxRadius(3)
+
+    // how fast it expands
+    .ringPropagationSpeed(1.5)
+
+    // a new ring every 1.2 seconds
+    .ringRepeatPeriod(1200)
+
 
     // --- Flight path (the dashed line) ---
+
     .pathsData([])
-    .pathPoints('points')                            // each path object has a "points" array
+
+    // each path object has a "points" array
+    .pathPoints('points')
+
     .pathPointLat((p) => p.lat)
     .pathPointLng((p) => p.lon)
-    .pathPointAlt((p) => altFromKm(p.altKm))         // lift each point off the surface
+
+    // lift each point off the surface
+    .pathPointAlt((p) => altFromKm(p.altKm))
+
     .pathColor((d) => d.color)
-    .pathStroke(3)                                   // line thickness
-    .pathDashLength(0.06)                            // dash length (fraction of the path)
-    .pathDashGap(0.015)                              // gap between dashes
-    .pathDashAnimateTime(4000)                       // dashes flow along the path every 4 s
-    .pathTransitionDuration(0)                       // redraw instantly when recoloured
+
+    // line thickness
+    .pathStroke(3)
+
+    // dash length and gap (as fractions of the whole path)
+    .pathDashLength(0.06)
+    .pathDashGap(0.015)
+
+    // dashes flow along the path every 4 seconds
+    .pathDashAnimateTime(4000)
+
+    // redraw instantly when recoloured
+    .pathTransitionDuration(0)
+
 
     // --- Viewing zones (bonus): see-through circles on the ground ---
+
     .polygonsData([])
-    // More transparent for low-quality zones, more solid for high-quality ones
+
+    // more transparent for low-quality zones, more solid for high-quality ones
     .polygonCapColor((d) => `rgba(200, 215, 255, ${0.06 + 0.22 * d.properties.quality})`)
-    .polygonSideColor(() => 'rgba(0,0,0,0)')        // no visible "walls" on the sides
+
+    // no visible "walls" on the sides
+    .polygonSideColor(() => 'rgba(0, 0, 0, 0)')
+
     .polygonStrokeColor(() => 'rgba(230, 236, 255, 0.55)')
-    .polygonAltitude((d) => d.properties.alt)        // each circle gets its own height (see showZones)
+
+    // each circle gets its own height (see showZones below)
+    .polygonAltitude((d) => d.properties.alt)
+
     .polygonsTransitionDuration(300)
 
+
     // --- The rocket (a custom 3D object) ---
+
     .objectsData([])
     .objectLat('lat')
     .objectLng('lon')
     .objectAltitude('alt')
     .objectThreeObject(() => rocketMesh);
 
+
+  // ---------------------------------------------------------------------------
+  // Spin + sizing
+  // ---------------------------------------------------------------------------
+
   // Slowly spin the Earth until a launch is selected
   globe.controls().autoRotate = true;
   globe.controls().autoRotateSpeed = 0.4;
 
-  // Keep the 3D canvas the same size as its container, including when the window resizes
-  const resize = () => globe.width(container.clientWidth).height(container.clientHeight);
+  // Keep the 3D canvas the same size as its container,
+  // including when the browser window is resized
+  const resize = () => {
+    globe.width(container.clientWidth);
+    globe.height(container.clientHeight);
+  };
+
   window.addEventListener('resize', resize);
   resize();
 
-  // ---------- Internal state (what's currently shown) ----------
-  let current = { launch: null, trajectory: [], rating: 'none' };
-  let rafId = null; // ID of the running animation loop, so we can stop it
 
-  // Draw (or redraw) the flight path in the colour matching the current weather
+  // ---------------------------------------------------------------------------
+  // Internal state (what's currently shown)
+  // ---------------------------------------------------------------------------
+
+  let current = {
+    launch: null,
+    trajectory: [],
+    rating: 'none',
+  };
+
+  // ID of the running animation loop, so we can stop it later
+  let rafId = null;
+
+
+  // ---------------------------------------------------------------------------
+  // drawPath()
+  // Draw (or redraw) the flight path in the colour matching the current weather.
+  // ---------------------------------------------------------------------------
+
   function drawPath() {
-    globe.pathsData(
-      current.trajectory.length
-        ? [{ points: current.trajectory, color: RATING_COLORS[current.rating] || RATING_COLORS.none }]
-        : []
-    );
+
+    // Nothing to draw yet
+    if (current.trajectory.length === 0) {
+      globe.pathsData([]);
+      return;
+    }
+
+    const color = RATING_COLORS[current.rating] || RATING_COLORS.none;
+
+    globe.pathsData([
+      { points: current.trajectory, color: color },
+    ]);
   }
 
+
+  // ---------------------------------------------------------------------------
+  // positionAt(trajectory, simT)
   // Work out where the rocket is at flight time simT (seconds after liftoff).
+  //
   // The trajectory is a list of points, so we find the two points either side
   // of simT and blend between them ("linear interpolation").
+  // ---------------------------------------------------------------------------
+
   function positionAt(trajectory, simT) {
-    let i = trajectory.findIndex((p) => p.t >= simT); // first point at or after simT
-    if (i <= 0) i = i === 0 ? 1 : trajectory.length - 1; // handle the very start / end
+
+    // Index of the first point at or after simT
+    let i = trajectory.findIndex((p) => p.t >= simT);
+
+    // Handle the very start (i = 0) and the very end (not found, i = -1)
+    if (i === 0) {
+      i = 1;
+    } else if (i === -1) {
+      i = trajectory.length - 1;
+    }
+
+    // The two points either side of simT
     const a = trajectory[i - 1];
     const b = trajectory[i];
-    const f = b.t === a.t ? 0 : (simT - a.t) / (b.t - a.t); // 0 = at a, 1 = at b
+
+    // How far between a and b we are: 0 = exactly at a, 1 = exactly at b
+    const f = (b.t === a.t) ? 0 : (simT - a.t) / (b.t - a.t);
+
+    // Blend each value between a and b
+    const lat = a.lat + (b.lat - a.lat) * f;
+    const lon = a.lon + (b.lon - a.lon) * f;
+    const altKm = a.altKm + (b.altKm - a.altKm) * f;
+
     return {
-      lat: a.lat + (b.lat - a.lat) * f,
-      lon: a.lon + (b.lon - a.lon) * f,
-      alt: altFromKm(a.altKm + (b.altKm - a.altKm) * f),
+      lat: lat,
+      lon: lon,
+      alt: altFromKm(altKm),
     };
   }
 
-  // Run the rocket animation. requestAnimationFrame calls `frame` about 60 times
-  // a second; each time we move the rocket to where it should be right now.
+
+  // ---------------------------------------------------------------------------
+  // playAscent()
+  // Run the rocket animation.
+  //
+  // requestAnimationFrame calls `frame` about 60 times a second. Each time,
+  // we move the rocket to where it should be right now.
+  // ---------------------------------------------------------------------------
+
   function playAscent() {
-    cancelAnimationFrame(rafId); // stop any animation already running
+
+    // Stop any animation that's already running
+    cancelAnimationFrame(rafId);
+
     const traj = current.trajectory;
-    if (traj.length < 2) return;
-    const tMax = traj[traj.length - 1].t; // total flight time in seconds
-    const start = performance.now();       // when the animation started (ms)
+
+    if (traj.length < 2) {
+      return;
+    }
+
+    // Total flight time in seconds (time of the last point)
+    const tMax = traj[traj.length - 1].t;
+
+    // When the animation started, in milliseconds
+    const start = performance.now();
 
     const frame = (now) => {
-      // `%` (remainder) makes the animation loop: it restarts after PLAYBACK_MS + PAUSE_MS
+
+      // `%` (remainder) makes the animation loop:
+      // it restarts every PLAYBACK_MS + PAUSE_MS milliseconds
       const elapsed = (now - start) % (PLAYBACK_MS + PAUSE_MS);
-      // Map real elapsed time to flight time, holding at the end during the pause
-      const simT = Math.min(elapsed / PLAYBACK_MS, 1) * tMax;
-      globe.objectsData([positionAt(traj, simT)]); // move the rocket
-      onTick?.(simT, tMax);                        // tell the page (timeline) where we are
-      rafId = requestAnimationFrame(frame);        // schedule the next frame
+
+      // Map real time to flight time, holding at the end during the pause
+      const progress = Math.min(elapsed / PLAYBACK_MS, 1);
+      const simT = progress * tMax;
+
+      // Move the rocket
+      globe.objectsData([positionAt(traj, simT)]);
+
+      // Tell the page (the timeline) where we are
+      if (onTick) {
+        onTick(simT, tMax);
+      }
+
+      // Schedule the next frame
+      rafId = requestAnimationFrame(frame);
     };
+
     rafId = requestAnimationFrame(frame);
   }
 
+
+  // ---------------------------------------------------------------------------
+  // flyTo(trajectory, ms)
   // Smoothly move the camera to look at the middle of the flight path.
-  // lat - 5 tilts the view slightly so we look "up" the path; altitude is zoom
-  // (lower = closer). ms = how long the camera move takes.
+  //
+  //   lat - 5   tilts the view slightly so we look "up" the path
+  //   altitude  is zoom (lower = closer)
+  //   ms        is how long the camera move takes
+  // ---------------------------------------------------------------------------
+
   function flyTo(trajectory, ms = 2000) {
+
     const mid = trajectory[Math.floor(trajectory.length / 2)];
-    globe.pointOfView({ lat: mid.lat - 5, lng: mid.lon, altitude: 1.3 }, ms);
+
+    globe.pointOfView(
+      { lat: mid.lat - 5, lng: mid.lon, altitude: 1.3 },
+      ms
+    );
   }
 
+
+  // ---------------------------------------------------------------------------
+  // circleRing(lat, lon, radiusKm)
   // Build a circle of radiusKm around (lat, lon) as a list of [lon, lat] points.
+  //
   // You can't just draw a circle in degrees on a sphere, so we walk around the
   // centre in 64 steps, using the "destination point" formula to find the spot
   // radiusKm away in each direction (bearing).
+  // ---------------------------------------------------------------------------
+
   function circleRing(lat, lon, radiusKm, steps = 64) {
+
     const phi = toRad(lat);
     const lambda = toRad(lon);
-    const delta = radiusKm / EARTH_R_KM; // radius as an angle on the sphere
+
+    // The radius as an angle on the sphere
+    const delta = radiusKm / EARTH_R_KM;
+
     const ring = [];
+
     for (let k = 0; k <= steps; k++) {
-      const brg = (2 * Math.PI * k) / steps; // direction: 0 = north, going clockwise
-      const lat2 = Math.asin(Math.sin(phi) * Math.cos(delta) + Math.cos(phi) * Math.sin(delta) * Math.cos(brg));
+
+      // Direction: 0 = north, going clockwise all the way round
+      const brg = (2 * Math.PI * k) / steps;
+
+      const lat2 = Math.asin(
+        Math.sin(phi) * Math.cos(delta) +
+        Math.cos(phi) * Math.sin(delta) * Math.cos(brg)
+      );
+
       const lon2 = lambda + Math.atan2(
         Math.sin(brg) * Math.sin(delta) * Math.cos(phi),
         Math.cos(delta) - Math.sin(phi) * Math.sin(lat2)
       );
-      ring.push([toDeg(lon2), toDeg(lat2)]); // GeoJSON wants [longitude, latitude]
+
+      // GeoJSON wants [longitude, latitude], in that order
+      ring.push([toDeg(lon2), toDeg(lat2)]);
     }
+
     return ring;
   }
 
+
   // ===========================================================================
-  // Public functions: the only things the rest of the app can call
+  // PUBLIC FUNCTIONS
+  // The only things the rest of the app can call.
   // ===========================================================================
+
   return {
-    /** Show a launch: pad marker, flight path, rocket animation, camera move. */
+
+    // -------------------------------------------------------------------------
+    // Show a launch: pad marker, flight path, rocket animation, camera move.
+    // -------------------------------------------------------------------------
     showLaunch(launch, trajectory, weather) {
-      current = { launch, trajectory, rating: weather?.rating || 'none' };
-      globe.controls().autoRotate = false; // stop spinning so the user can look
+
+      current = {
+        launch: launch,
+        trajectory: trajectory,
+        rating: weather?.rating || 'none',
+      };
+
+      // Stop spinning so the user can look at the launch
+      globe.controls().autoRotate = false;
+
+      // Pad label and pulsing rings
       globe.labelsData([launch.pad]);
       globe.ringsData([launch.pad]);
+
       drawPath();
       flyTo(trajectory);
       playAscent();
     },
 
-    /** Recolour the path when the weather rating changes: 'green' | 'yellow' | 'red'. */
+
+    // -------------------------------------------------------------------------
+    // Recolour the path when the weather changes: 'green' | 'yellow' | 'red'
+    // -------------------------------------------------------------------------
     setWeather(rating) {
       current.rating = rating;
       drawPath();
     },
 
-    /** Restart the rocket animation from liftoff. */
+
+    // -------------------------------------------------------------------------
+    // Restart the rocket animation from liftoff
+    // -------------------------------------------------------------------------
     replay() {
       playAscent();
     },
 
-    /** Bonus: draw viewing zones, a list of { lat, lon, radiusKm, quality }. */
+
+    // -------------------------------------------------------------------------
+    // Bonus: draw viewing zones, a list of { lat, lon, radiusKm, quality }
+    // -------------------------------------------------------------------------
     showZones(zones) {
+
       // Sort biggest first, then give each circle a slightly higher altitude.
       // If two flat shapes sit at exactly the same height, the graphics card
       // can't decide which is on top and they flicker in stripes ("z-fighting").
       const sorted = [...zones].sort((a, b) => b.radiusKm - a.radiusKm);
-      globe.polygonsData(
-        sorted.map((z, i) => ({
-          // Each circle is a GeoJSON "Feature", the standard format for map shapes
-          type: 'Feature',
-          properties: { quality: z.quality, alt: 0.004 + i * 0.002 },
-          geometry: { type: 'Polygon', coordinates: [circleRing(z.lat, z.lon, z.radiusKm)] },
-        }))
-      );
+
+      // Turn each zone into a GeoJSON "Feature", the standard format for map shapes
+      const features = sorted.map((z, i) => ({
+        type: 'Feature',
+
+        properties: {
+          quality: z.quality,
+          alt: 0.004 + i * 0.002,
+        },
+
+        geometry: {
+          type: 'Polygon',
+          coordinates: [circleRing(z.lat, z.lon, z.radiusKm)],
+        },
+      }));
+
+      globe.polygonsData(features);
     },
 
-    /** Remove all viewing-zone circles. */
+
+    // -------------------------------------------------------------------------
+    // Remove all viewing-zone circles
+    // -------------------------------------------------------------------------
     clearZones() {
       globe.polygonsData([]);
     },
 
-    /** The raw globe.gl object, in case you need a setting not wrapped above. */
+
+    // -------------------------------------------------------------------------
+    // The raw globe.gl object, in case you need a setting not wrapped above
+    // -------------------------------------------------------------------------
     raw: globe,
   };
 }
