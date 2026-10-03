@@ -534,22 +534,34 @@ export const ROCKETS = [
 
 
 // =============================================================================
-// rocketFor(name)
+// findRocket(name)
 // Find the model for a rocket name, e.g. from Yosry's real launch data
-// ("Falcon 9 Block 5" -> Falcon 9). Falls back to Falcon 9 if unknown.
+// ("Falcon 9 Block 5" -> Falcon 9). Returns null if we don't have a model.
+// =============================================================================
+
+export function findRocket(name = '') {
+
+  const n = name.toLowerCase();
+  const byId = (id) => ROCKETS.find((r) => r.id === id);
+
+  // Starship first, because "Super Heavy" also contains the word "heavy"
+  if (n.includes('starship') || n.includes('super heavy')) return byId('starship');
+  if (n.includes('falcon heavy')) return byId('falconheavy');
+  if (n.includes('falcon')) return byId('falcon9');
+  if (n.includes('sls') || n.includes('artemis')) return byId('sls');
+  if (n.includes('saturn')) return byId('saturnv');
+
+  // Exact id match (e.g. 'sls')
+  return byId(n) || null;
+}
+
+
+// =============================================================================
+// rocketFor(name)
+// Same as findRocket, but always returns a model: unknown rockets (e.g. a
+// Long March or Nuri from the real launch list) fly as a Falcon 9 stand-in.
 // =============================================================================
 
 export function rocketFor(name = '') {
-
-  const n = name.toLowerCase();
-
-  // Starship first, because "Super Heavy" also contains the word "heavy"
-  if (n.includes('starship') || n.includes('super heavy')) return ROCKETS.find((r) => r.id === 'starship');
-  if (n.includes('heavy')) return ROCKETS.find((r) => r.id === 'falconheavy');
-  if (n.includes('falcon')) return ROCKETS.find((r) => r.id === 'falcon9');
-  if (n.includes('sls') || n.includes('artemis')) return ROCKETS.find((r) => r.id === 'sls');
-  if (n.includes('saturn')) return ROCKETS.find((r) => r.id === 'saturnv');
-
-  // Exact id match (e.g. 'sls'), otherwise the default
-  return ROCKETS.find((r) => r.id === n) || ROCKETS[0];
+  return findRocket(name) || ROCKETS[0];
 }

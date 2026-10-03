@@ -30,7 +30,7 @@
 
       <!-- HERO: big countdown and mission name, floating over the globe (top-left) -->
       <header class="hero">
-        <p class="hero-label">Next launch</p>
+        <p id="hero-label" class="hero-label">Next launch</p>
         <!-- Numbers filled in every second by src/placeholders/countdown.js -->
         <div id="countdown" class="countdown" aria-live="off">
           <span class="countdown-prefix">T&minus;</span><span id="countdown-time">--:--:--</span>
@@ -72,10 +72,21 @@
       <aside id="panel">
         <p class="brand">Launch Watcher</p>
 
-        <!-- Launch site, target orbit and rocket pickers (buttons added by main.js) -->
+        <!-- Real upcoming launches from Yosry's launch-api.js (cards added by main.js) -->
+        <section class="block" id="upcoming-slot">
+
+          <h2>Upcoming launches</h2>
+          <div id="launch-list" class="spots"></div>
+
+        </section>
+
+        <!-- Demo launch: site, target orbit and rocket pickers (buttons added by main.js) -->
         <section class="block" id="launch-picker">
 
-          <h2>Launch site</h2>
+          <h2>Try a demo launch</h2>
+          <p class="muted">Pick any combination to see how the flight path and viewing areas change.</p>
+
+          <h2 class="sub-heading">Launch site</h2>
           <div id="site-picker" class="choices"></div>
 
           <h2 class="sub-heading">Target orbit</h2>

@@ -577,6 +577,12 @@ html, body {
   border-color: var(--mist);
 }
 
+/* The selected launch in the upcoming launches list */
+.spot[aria-pressed='true'] {
+  border-color: var(--plume);
+  background: rgba(255, 181, 71, 0.08);
+}
+
 .spot:focus-visible {
   outline: 2px solid var(--plume);
   outline-offset: 3px;
