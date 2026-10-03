@@ -1,13 +1,35 @@
-// Approximate rocket models built from Three.js shapes, with separable stages.
-// Geometry uses metres; globe.js enlarges the models for display.
+// =============================================================================
+// rockets.js  (Colby)
+// -----------------------------------------------------------------------------
+// 3D models of real rockets, built from simple shapes (cylinders and cones)
+// with three.js, so there are no image or model files to download.
+//
+// Every model is split into two parts so it can separate in flight:
+//
+//   lower: the first stage / boosters (falls away at stage separation)
+//   upper: everything above it (keeps flying to orbit)
+//
+// Each part also has an engine flame that main.js / globe.js switches on and off.
+//
+// All sizes below are in METRES, using each rocket's real dimensions
+// (rounded). globe.js scales the whole model up so it's visible from space.
+//
+// Each rocket also lists its own ascent events (times in seconds after
+// liftoff, approximate), used for the timeline at the bottom of the screen.
+// =============================================================================
+
 
 import * as THREE from 'three';
+
 
 // Real rockets are very thin. This widens every part a little so the
 // rockets don't look like needles from far away. 1 = true proportions.
 const WIDTH = 1.4;
 
+
+// =============================================================================
 // COLOURS
+// =============================================================================
 
 const WHITE = '#f2f2ee';
 const BLACK = '#1d1f24';
@@ -16,7 +38,14 @@ const LIGHT_GREY = '#b9bcc2';
 const SLS_ORANGE = '#d9772b';   // the foam insulation on the SLS core stage
 const STEEL = '#c9ccd1';        // Starship's stainless steel
 
-// Shape helpers place each part upright (+Y), with its bottom at y.
+
+// =============================================================================
+// SHAPE HELPERS
+// -----------------------------------------------------------------------------
+// Every helper builds a shape standing upright (pointing along +Y), with its
+// BOTTOM at height y. That makes stacking stages easy: the next part starts
+// where the last one ended.
+// =============================================================================
 
 // A material (surface look) for a part.
 // "emissive" makes it glow slightly, so the rocket is still visible on the
@@ -30,6 +59,7 @@ function material(color, { metal = 0.15, rough = 0.55 } = {}) {
     emissive: new THREE.Color(color).multiplyScalar(0.25),
   });
 }
+
 
 // A cylinder (or a tapered cylinder if rTop and rBottom differ)
 function cylinder(rTop, rBottom, height, color, y, options) {
@@ -49,10 +79,12 @@ function cylinder(rTop, rBottom, height, color, y, options) {
   return mesh;
 }
 
+
 // A cone pointing up (used for nose cones)
 function cone(radius, height, color, y, options) {
   return cylinder(0.001, radius, height, color, y, options);
 }
+
 
 // A rounded nose cone (ogive), like a payload fairing or Starship's nose.
 // Made by spinning a curved outline around the vertical axis ("lathe").
@@ -79,6 +111,7 @@ function ogive(radius, height, color, y, options) {
   return mesh;
 }
 
+
 // A flat box (used for fins, legs, grid fins, flaps)
 function box(width, height, depth, color, x, y, z) {
 
@@ -89,6 +122,7 @@ function box(width, height, depth, color, x, y, z) {
 
   return mesh;
 }
+
 
 // Place copies of a part evenly around the rocket (e.g. 4 fins at 90° apart).
 //   makePart(angle): builds one part and positions it for that angle
@@ -103,6 +137,7 @@ function around(count, makePart, startAngle = 0) {
 
   return parts;
 }
+
 
 // An engine flame: a glowing cone pointing DOWN from height y.
 // Two layers: a wide orange outer flame and a bright yellow-white core.
@@ -147,12 +182,14 @@ function flame(radius, length, y) {
   return group;
 }
 
+
 // Put a list of meshes into a group
 function groupOf(parts) {
   const group = new THREE.Group();
   group.add(...parts);
   return group;
 }
+
 
 // Standard timeline for a rocket: liftoff, Max Q, separation, orbit
 function events(maxQ, sepT, sepLabel) {
@@ -164,11 +201,21 @@ function events(maxQ, sepT, sepLabel) {
   ];
 }
 
-// Each build() returns lower/upper groups and their engine flames.
+
+// =============================================================================
+// THE ROCKETS
+// -----------------------------------------------------------------------------
+// Each build() returns:
+//   lower, upper:            groups of meshes for the two stages
+//   lowerFlame, upperFlame:  the engine flames (upper starts switched off)
+//   height:                  total height in metres
+// =============================================================================
 
 export const ROCKETS = [
 
+  // ---------------------------------------------------------------------------
   // FALCON 9 (SpaceX): 70 m, white with a black interstage, landing legs
+  // ---------------------------------------------------------------------------
   {
     id: 'falcon9',
     name: 'Falcon 9',
@@ -219,11 +266,15 @@ export const ROCKETS = [
         upper,
         lowerFlame: flame(2.2, 26, 0),
         upperFlame: flame(1.3, 14, 47.5),
+        height: 72,
       };
     },
   },
 
+
+  // ---------------------------------------------------------------------------
   // FALCON HEAVY (SpaceX): three Falcon 9 cores strapped together
+  // ---------------------------------------------------------------------------
   {
     id: 'falconheavy',
     name: 'Falcon Heavy',
@@ -274,12 +325,16 @@ export const ROCKETS = [
         upper,
         lowerFlame,
         upperFlame: flame(1.3, 14, 47.5),
+        height: 72,
       };
     },
   },
 
+
+  // ---------------------------------------------------------------------------
   // SLS BLOCK 1 (NASA Artemis): 98 m, orange core stage, two white solid
   // rocket boosters, and the Orion crew capsule with its escape tower on top
+  // ---------------------------------------------------------------------------
   {
     id: 'sls',
     name: 'SLS (Artemis)',
@@ -349,12 +404,16 @@ export const ROCKETS = [
         upper,
         lowerFlame,
         upperFlame: flame(1.6, 14, 65),
+        height: 98,
       };
     },
   },
 
+
+  // ---------------------------------------------------------------------------
   // SATURN V (NASA Apollo): 111 m, white with black roll-pattern bands,
   // four big fins at the base
+  // ---------------------------------------------------------------------------
   {
     id: 'saturnv',
     name: 'Saturn V',
@@ -414,13 +473,17 @@ export const ROCKETS = [
         upper,
         lowerFlame: flame(5, 40, -1),
         upperFlame: flame(2.5, 18, 42),
+        height: 111,
       };
     },
   },
 
+
+  // ---------------------------------------------------------------------------
   // STARSHIP (SpaceX): 121 m, all stainless steel. Super Heavy booster on the
   // bottom, Starship on top. Separates by "hot staging": the ship lights its
   // engines while still attached.
+  // ---------------------------------------------------------------------------
   {
     id: 'starship',
     name: 'Starship',
@@ -463,26 +526,42 @@ export const ROCKETS = [
         upper,
         lowerFlame: flame(4.5, 38, 0),
         upperFlame: flame(3, 22, 71),
+        height: 121,
       };
     },
   },
 ];
 
-// rocketFor(name)
-// Find the model for a rocket name, e.g. from Yosry's real launch data
-// ("Falcon 9 Block 5" -> Falcon 9). Falls back to Falcon 9 if unknown.
 
-export function rocketFor(name = '') {
+// =============================================================================
+// findRocket(name)
+// Find the model for a rocket name, e.g. from Yosry's real launch data
+// ("Falcon 9 Block 5" -> Falcon 9). Returns null if we don't have a model.
+// =============================================================================
+
+export function findRocket(name = '') {
 
   const n = name.toLowerCase();
+  const byId = (id) => ROCKETS.find((r) => r.id === id);
 
   // Starship first, because "Super Heavy" also contains the word "heavy"
-  if (n.includes('starship') || n.includes('super heavy')) return ROCKETS.find((r) => r.id === 'starship');
-  if (n.includes('heavy')) return ROCKETS.find((r) => r.id === 'falconheavy');
-  if (n.includes('falcon')) return ROCKETS.find((r) => r.id === 'falcon9');
-  if (n.includes('sls') || n.includes('artemis')) return ROCKETS.find((r) => r.id === 'sls');
-  if (n.includes('saturn')) return ROCKETS.find((r) => r.id === 'saturnv');
+  if (n.includes('starship') || n.includes('super heavy')) return byId('starship');
+  if (n.includes('falcon heavy')) return byId('falconheavy');
+  if (n.includes('falcon')) return byId('falcon9');
+  if (n.includes('sls') || n.includes('artemis')) return byId('sls');
+  if (n.includes('saturn')) return byId('saturnv');
 
-  // Exact id match (e.g. 'sls'), otherwise the default
-  return ROCKETS.find((r) => r.id === n) || ROCKETS[0];
+  // Exact id match (e.g. 'sls')
+  return byId(n) || null;
+}
+
+
+// =============================================================================
+// rocketFor(name)
+// Same as findRocket, but always returns a model: unknown rockets (e.g. a
+// Long March or Nuri from the real launch list) fly as a Falcon 9 stand-in.
+// =============================================================================
+
+export function rocketFor(name = '') {
+  return findRocket(name) || ROCKETS[0];
 }

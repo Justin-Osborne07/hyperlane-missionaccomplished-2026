@@ -6,23 +6,29 @@
 //   1. Data and settings
 //   2. The ascent timeline (bottom of the screen)
 //   3. The globe
-//   4. Launch site, orbit and rocket pickers (side panel)
+//   4. Upcoming launches list + demo pickers (side panel)
 //   5. selectLaunch(): switches the whole page to a new launch
 //   6. Buttons and developer tools
 //
+// The page has two modes:
+//   - live: a real upcoming launch from Yosry's launch-api.js
+//   - demo: a made-up launch from the site / orbit / rocket pickers
+//
 // Whose code is used where:
+//   - Yosry:  real upcoming launches (launch-api.js, connected through
+//             launch-adapter.js). His trajectory.js and countdown.js are still
+//             empty, so the mock flight path and placeholder countdown are used
+//             for now. Look for "PLUG-IN POINT (Yosry)".
 //   - Justin: launch sites, live weather, weather scoring
 //   - Colby:  globe, rockets, viewing areas + viewing spots (built on the same
 //             horizon idea as Justin's visibility.js)
-//   - Yosry:  still mock for now (launch data, trajectory, countdown).
-//             Look for "PLUG-IN POINT (Yosry)" when his code is ready.
 // =============================================================================
 
 
 import './style.css';
 
 import { createGlobe } from './globe.js';
-import { ROCKETS, rocketFor } from './rockets.js';
+import { ROCKETS, rocketFor, findRocket } from './rockets.js';
 import { startCountdown } from './placeholders/countdown.js';
 import { renderWeather } from './placeholders/weather-card.js';
 
@@ -35,7 +41,10 @@ import { mockWeather as testWeather } from './mock-weather.js';
 import { getViewingAreas, viewQuality, distanceKm } from './viewing-areas.js';
 import { viewingSpots, siteNotes } from './viewing-spots.js';
 
-// Still mock (waiting on Yosry's launch data and trajectory)
+// Yosry's real launches (through the adapter, which adds caching)
+import { loadUpcomingLaunches } from './launch-adapter.js';
+
+// Still mock: demo launches, and the flight path until Yosry's trajectory.js is ready
 import {
   ORBITS,
   buildDemoLaunch,
@@ -53,8 +62,17 @@ import {
 let EVENTS = ROCKETS[0].events;
 
 
-// What's currently selected. Canso is first in Justin's list, so it's the default.
+// What's currently selected.
 const state = {
+
+  // 'live' = a real launch from the list, 'demo' = from the pickers
+  mode: 'demo',
+
+  // real upcoming launches, and which one is selected
+  liveLaunches: [],
+  liveIndex: 0,
+
+  // demo pickers. Canso is first in Justin's list, so it's the default.
   pad: launchPads[0],
   orbit: 'LEO',
   rocket: ROCKETS[0],   // Falcon 9
@@ -177,6 +195,14 @@ function updateFlight(simT, tMax) {
 const globe = createGlobe($('globe'), {
   onTick: updateFlight,
   onPadClick: (pad) => {
+
+    // Only Justin's sites switch to a demo launch; clicking the pad of the
+    // current real launch does nothing
+    if (!launchPads.some((p) => p.id === pad.id)) {
+      return;
+    }
+
+    state.mode = 'demo';
     state.pad = pad;
     selectLaunch();
   },
@@ -205,7 +231,7 @@ function drawSitePicker() {
 
   const buttons = launchPads.map((pad) => {
 
-    const pressed = pad.id === state.pad.id;
+    const pressed = state.mode === 'demo' && pad.id === state.pad.id;
 
     return `
       <button class="choice" data-pad="${pad.id}" aria-pressed="${pressed}">
@@ -222,7 +248,7 @@ function drawOrbitPicker() {
 
   const buttons = Object.keys(ORBITS).map((key) => {
 
-    const pressed = key === state.orbit;
+    const pressed = state.mode === 'demo' && key === state.orbit;
 
     return `
       <button class="choice" data-orbit="${key}" aria-pressed="${pressed}">
@@ -239,7 +265,7 @@ function drawRocketPicker() {
 
   const buttons = ROCKETS.map((rocket) => {
 
-    const pressed = rocket.id === state.rocket.id;
+    const pressed = state.mode === 'demo' && rocket.id === state.rocket.id;
 
     return `
       <button class="choice" data-rocket="${rocket.id}" aria-pressed="${pressed}">
@@ -261,6 +287,7 @@ $('site-picker').addEventListener('click', (e) => {
     return;
   }
 
+  state.mode = 'demo';
   state.pad = launchPads.find((p) => p.id === button.dataset.pad);
   selectLaunch();
 });
@@ -275,6 +302,7 @@ $('orbit-picker').addEventListener('click', (e) => {
     return;
   }
 
+  state.mode = 'demo';
   state.orbit = button.dataset.orbit;
   selectLaunch();
 });
@@ -289,6 +317,7 @@ $('rocket-picker').addEventListener('click', (e) => {
     return;
   }
 
+  state.mode = 'demo';
   state.rocket = ROCKETS.find((r) => r.id === button.dataset.rocket);
   selectLaunch();
 });
@@ -305,10 +334,17 @@ function selectLaunch() {
 
   // --- Build the launch and its flight path ---
 
-  // PLUG-IN POINT (Yosry): replace with his real launch for this site
-  state.launch = buildDemoLaunch(state.pad, state.orbit, state.rocket.name);
+  if (state.mode === 'live') {
+    // A real launch from Yosry's data
+    state.launch = state.liveLaunches[state.liveIndex];
+  } else {
+    // A demo launch from the pickers
+    state.launch = buildDemoLaunch(state.pad, state.orbit, state.rocket.name);
+  }
 
-  // PLUG-IN POINT (Yosry): replace with getTrajectory(state.launch)
+  // PLUG-IN POINT (Yosry): replace with getTrajectory(state.launch) when his
+  // trajectory.js is ready. The mock works for real launches too, because it
+  // only needs the pad position and the inclination.
   state.trajectory = makeMockTrajectory(state.launch);
 
   // The three viewing zones for this flight path (see viewing-areas.js)
@@ -326,6 +362,7 @@ function selectLaunch() {
   drawSitePicker();
   drawOrbitPicker();
   drawRocketPicker();
+  drawLaunchList();
 
 
   // --- Rocket model ---
@@ -364,6 +401,7 @@ function selectLaunch() {
 
   // --- Hero (top-left) ---
 
+  $('hero-label').textContent = launch.live ? 'Upcoming launch' : 'Demo launch';
   $('mission-name').textContent = launch.name;
   $('mission-sub').textContent = `${launch.rocket} from ${launch.pad.name}`;
 
@@ -384,9 +422,19 @@ function selectLaunch() {
   const missionRows = [
     ['Rocket', launch.rocket],
     ['Launch site', launch.pad.name],
-    ['Target orbit', ORBITS[launch.orbit]?.name || launch.orbit],
+    ['Target orbit', launch.orbitLabel || ORBITS[launch.orbit]?.name || launch.orbit],
     ['Inclination', `${launch.inclination}°`],
   ];
+
+  // Real launches also show their status, e.g. "Go for Launch"
+  if (launch.status) {
+    missionRows.push(['Status', launch.status]);
+  }
+
+  // Be honest when we don't have a 3D model of this rocket
+  if (!findRocket(launch.rocket)) {
+    missionRows.push(['3D model', 'Falcon 9 (stand-in)']);
+  }
 
   // <dt> = the label, <dd> = the value
   $('mission-details').innerHTML = missionRows
@@ -401,6 +449,71 @@ function selectLaunch() {
 
   loadWeather();
 }
+
+
+// =============================================================================
+// UPCOMING LAUNCHES LIST (Yosry's real data)
+// -----------------------------------------------------------------------------
+// One card per real launch: mission, rocket, place and date. Clicking a card
+// switches the page to that launch.
+// =============================================================================
+
+// e.g. "Mon, Oct 5, 4:17 AM" in the viewer's own time zone
+const fmtLaunchDate = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+
+function drawLaunchList() {
+
+  // Nothing loaded (no internet, or the API is down)
+  if (state.liveLaunches.length === 0) {
+    $('launch-list').innerHTML =
+      "<p class=\"muted\">Couldn't load upcoming launches. Showing demo launches instead.</p>";
+    return;
+  }
+
+  const cards = state.liveLaunches.map((launch, i) => {
+
+    const pressed = state.mode === 'live' && i === state.liveIndex;
+
+    // Just the place, e.g. "Cape Canaveral SFS, FL, USA" -> "Cape Canaveral SFS"
+    const place = launch.pad.name.split(', ')[1] || launch.pad.name;
+
+    return `
+      <button class="spot" data-launch="${i}" aria-pressed="${pressed}">
+
+        <div class="spot-top">
+          <span class="spot-name">${launch.name}</span>
+        </div>
+
+        <div class="spot-meta">${launch.rocket} from ${place}</div>
+        <div class="spot-perks">${fmtLaunchDate.format(new Date(launch.windowStart))}</div>
+
+      </button>`;
+  });
+
+  $('launch-list').innerHTML = cards.join('');
+}
+
+
+// Clicking a launch card
+$('launch-list').addEventListener('click', (e) => {
+
+  const card = e.target.closest('[data-launch]');
+
+  if (!card) {
+    return;
+  }
+
+  state.mode = 'live';
+  state.liveIndex = Number(card.dataset.launch);
+  selectLaunch();
+});
 
 
 // =============================================================================
@@ -621,5 +734,34 @@ drawSitePicker();
 drawOrbitPicker();
 drawRocketPicker();
 
-// Let the Earth spin for 1.5 seconds, then fly to the default launch (Canso)
-setTimeout(selectLaunch, 1500);
+$('launch-list').innerHTML = '<p class="muted">Loading upcoming launches…</p>';
+
+
+async function start() {
+
+  // Wait for BOTH: the real launch list to load, and 1.5 seconds of the Earth
+  // spinning (a nice intro). allSettled waits even if the launch list fails.
+  const wait = new Promise((resolve) => setTimeout(resolve, 1500));
+  const [result] = await Promise.allSettled([loadUpcomingLaunches(), wait]);
+
+  if (result.status === 'fulfilled' && result.value.length > 0) {
+
+    // Real launches loaded: show the soonest one
+    state.liveLaunches = result.value;
+    state.liveIndex = 0;
+    state.mode = 'live';
+
+  } else {
+
+    // No internet or the API is down: fall back to the demo launch
+    if (result.status === 'rejected') {
+      console.error('Upcoming launches failed to load:', result.reason);
+    }
+
+    state.mode = 'demo';
+  }
+
+  selectLaunch();
+}
+
+start();
