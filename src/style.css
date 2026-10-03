@@ -742,6 +742,105 @@ html, body {
   border-color: var(--mist);
 }
 
+/* ---------- Launches tab: search box and multiview controls ---------- */
+
+.list-tools {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.list-tools[hidden] {
+  display: none;
+}
+
+/* The search box (uses the dropdown look from .select) */
+.search {
+  cursor: text;
+}
+
+.search::placeholder {
+  color: var(--mist);
+}
+
+/* "Watch selected together" button */
+.multi-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* "5 of 12 selected"  ...  "Clear" */
+.multi-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--mist);
+  font-size: 13px;
+}
+
+/* A button that looks like a text link */
+.link-btn {
+  padding: 0;
+  font: inherit;
+  color: var(--plume);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.link-btn:focus-visible {
+  outline: 2px solid var(--plume);
+  outline-offset: 2px;
+}
+
+.link-btn[hidden] {
+  display: none;
+}
+
+/* One row in the launch list: tick box on the left, card on the right */
+.launch-row {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The tick box, in the accent colour */
+.pick {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--plume);
+  cursor: pointer;
+}
+
+.pick:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+/* Multiview key above the timeline: smaller, so up to 12 launches fit tidily */
+.mission-strip.is-key {
+  gap: 4px 18px;
+}
+
+.mission-strip.is-key dd {
+  max-width: 170px;
+  font-size: 13px;
+}
+
+/* Multiview key above the timeline: a coloured dot for each launch */
+.key-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border-radius: 50%;
+  vertical-align: 1px;
+}
+
 /* The selected launch in the upcoming launches list */
 .spot[aria-pressed='true'] {
   border-color: var(--plume);

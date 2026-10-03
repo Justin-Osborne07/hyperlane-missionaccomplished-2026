@@ -29,9 +29,10 @@ import { distanceKm } from './viewing-areas.js';
 const CACHE_MS = 15 * 60 * 1000;
 
 // The name the results are saved under in the browser.
-// ("v2" because Yosry's launch-api.js changed its fields; this makes sure
-// results saved by the old version are ignored.)
-const CACHE_KEY = 'launch-watcher-upcoming-v2';
+// (The version number goes up whenever what's saved changes, e.g. Yosry's
+// fields changing, or fetching 100 launches instead of 5. That makes sure
+// results saved by an older version are ignored.)
+const CACHE_KEY = 'launch-watcher-upcoming-v3';
 
 // A real pad counts as "at" one of Justin's sites if it's within this distance
 const SAME_SITE_KM = 60;

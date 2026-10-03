@@ -10,9 +10,10 @@
 //   5. selectLaunch(): switches the whole page to a new launch
 //   6. Buttons and developer tools
 //
-// The page has two modes:
-//   - live: a real upcoming launch from Yosry's launch-api.js
-//   - demo: a made-up launch from the site / orbit / rocket pickers
+// The page has three modes:
+//   - live:  a real upcoming launch from Yosry's launch-api.js
+//   - demo:  a made-up launch from the site / orbit / rocket pickers
+//   - multi: every real upcoming launch flying at the same time
 //
 // Whose code is used where:
 //   - Yosry:  real upcoming launches (launch-api.js, connected through
@@ -26,7 +27,7 @@
 
 import './style.css';
 
-import { createGlobe } from './visualization/globe.js';
+import { createGlobe, MULTI_COLORS } from './visualization/globe.js';
 import { createCockpit } from './visualization/cockpit.js';
 import { ROCKETS, rocketFor, findRocket } from './visualization/rockets.js';
 import { startCountdown } from './placeholders/countdown.js';
@@ -67,12 +68,18 @@ let EVENTS = ROCKETS[0].events;
 // What's currently selected.
 const state = {
 
-  // 'live' = a real launch from the list, 'demo' = from the pickers
+  // 'live' = a real launch from the list, 'demo' = from the pickers,
+  // 'multi' = all real launches at once
   mode: 'demo',
 
   // real upcoming launches, and which one is selected
   liveLaunches: [],
   liveIndex: 0,
+
+  // multiview: the ids of the launches ticked to fly together,
+  // and the search text filtering the launch list
+  multiPicks: new Set(),
+  search: '',
 
   // demo pickers. Canso is first in Justin's list, so it's the default.
   pad: launchPads[0],
@@ -106,13 +113,22 @@ let weatherRequestId = 0;
 const $ = (id) => document.getElementById(id);
 
 
-// Format seconds as mission elapsed time, e.g. 75 -> "T+01:15"
+// Format seconds as mission elapsed time:
+//   75   -> "T+01:15"
+//   5000 -> "T+1:23:20"  (hours appear once the rocket is in orbit)
 function fmtMET(seconds) {
 
-  const minutes = String(Math.floor(seconds / 60)).padStart(2, '0');
-  const secs = String(Math.floor(seconds % 60)).padStart(2, '0');
+  const two = (n) => String(Math.floor(n)).padStart(2, '0');
 
-  return `T+${minutes}:${secs}`;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (hours > 0) {
+    return `T+${hours}:${two(minutes)}:${two(secs)}`;
+  }
+
+  return `T+${two(minutes)}:${two(secs)}`;
 }
 
 
@@ -160,8 +176,8 @@ function drawTimeline(tMaxFlight) {
 // event dots are lit up.
 function updateFlight(simT, tMax) {
 
-  // Orange progress bar
-  $('track-fill').style.width = `${(simT / tMax) * 100}%`;
+  // Orange progress bar (full once the rocket is in orbit)
+  $('track-fill').style.width = `${Math.min(simT / tMax, 1) * 100}%`;
 
   // Mission clock, e.g. "T+02:15"
   $('met').textContent = fmtMET(simT);
@@ -181,8 +197,8 @@ function updateFlight(simT, tMax) {
     }
   });
 
-  // Phase name above the track, e.g. "Max Q"
-  $('phase').textContent = current.label;
+  // Phase name above the track, e.g. "Max Q", or "In orbit" during the lap
+  $('phase').textContent = simT > tMax ? 'In orbit' : current.label;
 
   // Cockpit view instruments (does nothing while the cockpit is hidden)
   const { altKm, speedKmS } = telemetryAt(simT);
@@ -215,6 +231,17 @@ function telemetryAt(simT) {
 
   if (traj.length < 2) {
     return { altKm: 0, speedKmS: 0 };
+  }
+
+  // In orbit (after the trajectory ends): steady height, and the real speed
+  // needed to stay in a circular orbit:  speed = √(μ / r)
+  const last = traj[traj.length - 1];
+
+  if (simT > last.t) {
+    return {
+      altKm: last.altKm,
+      speedKmS: Math.sqrt(398600 / (EARTH_R_KM + last.altKm)),
+    };
   }
 
   // Position (lat, lon, altitude) at any time, blending between trajectory points
@@ -267,6 +294,20 @@ function telemetryAt(simT) {
 const globe = createGlobe($('globe'), {
   onTick: updateFlight,
   onPadClick: (pad) => {
+
+    // Multiview: clicking a launch's label opens that launch on its own
+    if (state.mode === 'multi') {
+
+      const index = state.liveLaunches.findIndex((l) => l.pad === pad);
+
+      if (index !== -1) {
+        state.mode = 'live';
+        state.liveIndex = index;
+        selectLaunch();
+      }
+
+      return;
+    }
 
     // Only Justin's sites switch to a demo launch; clicking the pad of the
     // current real launch does nothing
@@ -519,6 +560,12 @@ showTab('overview');
 
 function selectLaunch() {
 
+  // Multiview has its own version (see selectMultiview below)
+  if (state.mode === 'multi') {
+    selectMultiview();
+    return;
+  }
+
   // --- Build the launch and its flight path ---
 
   if (state.mode === 'live') {
@@ -636,6 +683,9 @@ function selectLaunch() {
     missionRows.push(['3D model', 'Falcon 9 (stand-in)']);
   }
 
+  // Back to normal size (multiview makes it smaller)
+  $('mission-details').classList.remove('is-key');
+
   // Shown above the timeline as a row of small "label over value" pairs.
   // Each pair is wrapped in a <div> so it stays together when the row wraps.
   // <dt> = the label, <dd> = the value. The title shows the full text on
@@ -656,6 +706,115 @@ function selectLaunch() {
 
 
 // =============================================================================
+// selectMultiview()
+// -----------------------------------------------------------------------------
+// Shows the launches ticked in the list flying at the same time, each in its
+// own colour. The countdown is to the soonest one. Weather and viewing spots are
+// for one launch at a time, so those panels ask you to pick a single launch.
+// The Side and Cockpit cameras follow the soonest launch.
+// =============================================================================
+
+function selectMultiview() {
+
+  // The launches ticked in the list (soonest first)
+  const launches = pickedLaunches();
+
+  // Nothing ticked: show the soonest launch on its own instead
+  if (launches.length === 0) {
+    state.mode = 'live';
+    state.liveIndex = 0;
+    selectLaunch();
+    return;
+  }
+
+  // A flight for each launch: Yosry's flight path (with the older demo path
+  // as a backup) and the right rocket model
+  const list = launches.map((launch) => {
+
+    let trajectory = getTrajectory(launch);
+
+    if (trajectory.length < 2) {
+      trajectory = makeMockTrajectory(launch);
+    }
+
+    return { launch, trajectory, rocket: rocketFor(launch.rocket) };
+  });
+
+  // The soonest launch drives the countdown, timeline and cockpit
+  state.launch = launches[0];
+  state.trajectory = list[0].trajectory;
+
+  const flightEnd = state.trajectory[state.trajectory.length - 1].t;
+  const firstRocket = list[0].rocket;
+
+  EVENTS = firstRocket.events.map((e, i) =>
+    i === firstRocket.events.length - 1 ? { ...e, t: flightEnd } : e
+  );
+
+  drawTimeline(flightEnd);
+
+
+  // --- Panels ---
+
+  drawSitePicker();
+  drawOrbitPicker();
+  drawRocketPicker();
+  drawLaunchList();
+
+
+  // --- Globe: all of them at once ---
+
+  globe.showMultiview(list);
+
+
+  // --- Hero (top-left): countdown to the soonest launch ---
+
+  $('hero-label').textContent = 'All upcoming launches';
+  $('mission-name').textContent = `${launches.length} launches at once`;
+  $('mission-sub').textContent = `Counting down to ${launches[0].name}`;
+
+  if (stopCountdown) {
+    stopCountdown();
+  }
+
+  stopCountdown = startCountdown(launches[0], {
+    timeEl: $('countdown-time'),
+    windowEl: $('window-line'),
+  });
+
+
+  // --- Key (above the timeline): which colour is which launch ---
+
+  // (smaller text in multiview, so a long key stays tidy)
+  $('mission-details').classList.add('is-key');
+
+  $('mission-details').innerHTML = list
+    .map(({ launch, rocket }, i) => `
+      <div class="mission-item">
+        <dt>
+          <span class="key-dot" style="background:${MULTI_COLORS[i % MULTI_COLORS.length]}"></span>
+          ${launch.rocket}
+        </dt>
+        <dd title="${launch.name}">${launch.name}</dd>
+      </div>`)
+    .join('');
+
+
+  // --- Weather and viewing: these are for one launch at a time ---
+
+  // Stop any forecast that's still loading from showing up
+  weatherRequestId += 1;
+  renderWeather(weatherEl, null, 'Pick a single launch to see its launch weather.');
+
+  globe.clearZones();
+  globe.showSpots([]);
+  $('site-note').hidden = true;
+  $('spot-list').innerHTML = '<p class="muted">Pick a single launch to see where to watch it.</p>';
+  $('back-to-launch').hidden = true;
+}
+
+
+// =============================================================================
 // UPCOMING LAUNCHES LIST (Yosry's real data)
 // -----------------------------------------------------------------------------
 // One card per real launch: mission, rocket, place and date. Clicking a card
@@ -672,40 +831,186 @@ const fmtLaunchDate = new Intl.DateTimeFormat(undefined, {
 });
 
 
+// The most launches multiview can show at once (one colour each, and enough
+// to keep it smooth on most laptops)
+const MULTI_MAX = MULTI_COLORS.length;
+
+// How many launches are ticked for multiview when the list first loads
+const MULTI_DEFAULT = 5;
+
+
+// -----------------------------------------------------------------------------
+// The controls above the list (created once, so the search box keeps its
+// focus while the list below it is redrawn on every keystroke):
+//   - a search box
+//   - "Watch selected together (N)" button
+//   - "N of 12 selected" and a "Clear" button
+// -----------------------------------------------------------------------------
+
+const listTools = document.createElement('div');
+listTools.className = 'list-tools';
+
+listTools.innerHTML = `
+
+  <input id="launch-search" class="select search" type="search"
+         placeholder="Search missions, rockets or places" aria-label="Search upcoming launches">
+
+  <button id="multi-btn" class="btn btn-toggle multi-btn" aria-pressed="false"></button>
+
+  <div class="multi-meta">
+    <span id="multi-count"></span>
+    <button id="multi-clear" class="link-btn">Clear</button>
+  </div>
+`;
+
+$('launch-list').before(listTools);
+
+// Hidden until the launches have loaded
+listTools.hidden = true;
+
+
+// Typing in the search box filters the list
+$('launch-search').addEventListener('input', (e) => {
+  state.search = e.target.value.trim().toLowerCase();
+  drawLaunchList();
+});
+
+
+// "Watch selected together"
+$('multi-btn').addEventListener('click', () => {
+
+  if (state.multiPicks.size === 0) {
+    return;
+  }
+
+  state.mode = 'multi';
+  selectLaunch();
+});
+
+
+// "Clear": untick everything. If multiview was showing, go back to the
+// soonest single launch, since there's nothing left to show together.
+$('multi-clear').addEventListener('click', () => {
+
+  state.multiPicks.clear();
+
+  if (state.mode === 'multi') {
+    state.mode = 'live';
+    state.liveIndex = 0;
+    selectLaunch();
+  } else {
+    drawLaunchList();
+  }
+});
+
+
+// The ticked launches, in list order (soonest first). This order also
+// decides each one's colour in multiview.
+function pickedLaunches() {
+  return state.liveLaunches.filter((l) => state.multiPicks.has(l.id));
+}
+
+
+// Colour of a launch in multiview, or null if it isn't ticked
+function multiColorFor(launch) {
+  const index = pickedLaunches().indexOf(launch);
+  return index === -1 ? null : MULTI_COLORS[index];
+}
+
+
+// -----------------------------------------------------------------------------
+// drawLaunchList()
+// Draws the list: one row per launch matching the search, each with a tick
+// box (add to multiview) and a card (click to watch that launch on its own).
+// -----------------------------------------------------------------------------
+
 function drawLaunchList() {
 
   // Nothing loaded (no internet, or the API is down)
   if (state.liveLaunches.length === 0) {
+    listTools.hidden = true;
     $('launch-list').innerHTML =
       "<p class=\"muted\">Couldn't load upcoming launches. Showing demo launches instead.</p>";
     return;
   }
 
-  const cards = state.liveLaunches.map((launch, i) => {
+  listTools.hidden = false;
+
+
+  // --- The controls above the list ---
+
+  const picked = state.multiPicks.size;
+  const inMulti = state.mode === 'multi';
+
+  $('multi-btn').textContent = inMulti
+    ? `Watching ${picked} together`
+    : `Watch selected together (${picked})`;
+
+  $('multi-btn').setAttribute('aria-pressed', String(inMulti));
+  $('multi-btn').disabled = picked === 0;
+
+  $('multi-count').textContent = picked >= MULTI_MAX
+    ? `${picked} of ${MULTI_MAX} selected (the most at once)`
+    : `${picked} of ${MULTI_MAX} selected`;
+
+  $('multi-clear').hidden = picked === 0;
+
+
+  // --- The rows ---
+
+  // Keep each launch's position in the full list (i), then apply the search
+  const matches = state.liveLaunches
+    .map((launch, i) => ({ launch, i }))
+    .filter(({ launch }) =>
+      `${launch.name} ${launch.rocket} ${launch.pad.name}`.toLowerCase().includes(state.search)
+    );
+
+  if (matches.length === 0) {
+    $('launch-list').innerHTML = '<p class="muted">No launches match your search.</p>';
+    return;
+  }
+
+  const rows = matches.map(({ launch, i }) => {
 
     const pressed = state.mode === 'live' && i === state.liveIndex;
+    const ticked = state.multiPicks.has(launch.id);
 
-    // Just the place, e.g. "Cape Canaveral SFS, FL, USA" -> "Cape Canaveral SFS"
+    // Can't tick more once the limit is reached (but can still untick)
+    const locked = !ticked && picked >= MULTI_MAX;
+
+    // In multiview, ticked launches show their colour
+    const color = inMulti ? multiColorFor(launch) : null;
+    const dot = color ? `<span class="key-dot" style="background:${color}"></span>` : '';
+
+    // Just the place, e.g. "Space Launch Complex 40, Cape Canaveral / Kennedy" -> "Cape Canaveral / Kennedy"
     const place = launch.pad.name.split(', ')[1] || launch.pad.name;
 
     return `
-      <button class="spot" data-launch="${i}" aria-pressed="${pressed}">
+      <div class="launch-row">
 
-        <div class="spot-top">
-          <span class="spot-name">${launch.name}</span>
-        </div>
+        <input type="checkbox" class="pick" data-pick="${launch.id}"
+               ${ticked ? 'checked' : ''} ${locked ? 'disabled' : ''}
+               aria-label="Add ${launch.name} to multiview">
 
-        <div class="spot-meta">${launch.rocket} from ${place}</div>
-        <div class="spot-perks">${fmtLaunchDate.format(new Date(launch.windowStart))}</div>
+        <button class="spot" data-launch="${i}" aria-pressed="${pressed}">
 
-      </button>`;
+          <div class="spot-top">
+            <span class="spot-name">${dot}${launch.name}</span>
+          </div>
+
+          <div class="spot-meta">${launch.rocket} from ${place}</div>
+          <div class="spot-perks">${fmtLaunchDate.format(new Date(launch.windowStart))}</div>
+
+        </button>
+
+      </div>`;
   });
 
-  $('launch-list').innerHTML = cards.join('');
+  $('launch-list').innerHTML = rows.join('');
 }
 
 
-// Clicking a launch card
+// Clicking a launch card: watch that launch on its own
 $('launch-list').addEventListener('click', (e) => {
 
   const card = e.target.closest('[data-launch]');
@@ -717,6 +1022,37 @@ $('launch-list').addEventListener('click', (e) => {
   state.mode = 'live';
   state.liveIndex = Number(card.dataset.launch);
   selectLaunch();
+});
+
+
+// Ticking or unticking a launch for multiview
+$('launch-list').addEventListener('change', (e) => {
+
+  const box = e.target.closest('[data-pick]');
+
+  if (!box) {
+    return;
+  }
+
+  if (box.checked) {
+    state.multiPicks.add(box.dataset.pick);
+  } else {
+    state.multiPicks.delete(box.dataset.pick);
+  }
+
+  // Already watching multiview: update the globe straight away
+  if (state.mode === 'multi') {
+
+    if (state.multiPicks.size === 0) {
+      state.mode = 'live';
+      state.liveIndex = 0;
+    }
+
+    selectLaunch();
+
+  } else {
+    drawLaunchList();
+  }
 });
 
 
@@ -892,9 +1228,12 @@ zonesBtn.addEventListener('click', () => {
 
   zonesBtn.setAttribute('aria-pressed', String(state.zonesOn));
 
-  if (state.zonesOn) {
+  // (In multiview the areas belong to no single launch, so nothing is drawn)
+  if (state.zonesOn && state.mode !== 'multi') {
     zonesBtn.textContent = 'Hide viewing areas';
     globe.showViewingAreas(state.areas);
+  } else if (state.zonesOn) {
+    zonesBtn.textContent = 'Hide viewing areas';
   } else {
     zonesBtn.textContent = 'Show viewing areas';
     globe.clearZones();
@@ -934,6 +1273,11 @@ async function start() {
     state.liveLaunches = result.value;
     state.liveIndex = 0;
     state.mode = 'live';
+
+    // Tick the soonest few for multiview, so it works straight away
+    for (const launch of state.liveLaunches.slice(0, MULTI_DEFAULT)) {
+      state.multiPicks.add(launch.id);
+    }
 
   } else {
 

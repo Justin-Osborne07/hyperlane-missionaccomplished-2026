@@ -1,6 +1,6 @@
 export async function fetchUpcomingLaunches() {
     const response = await fetch(
-        "https://ll.thespacedevs.com/2.3.0/launches/upcoming/?format=json&limit=5"
+        "https://ll.thespacedevs.com/2.3.0/launches/upcoming/?format=json&limit=100"
     );
 
     const data = await response.json();
