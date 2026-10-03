@@ -821,6 +821,30 @@ html, body {
   opacity: 0.35;
 }
 
+/* Multiview key items are clickable: click one to follow that rocket */
+.key-item {
+  padding: 3px 8px;
+  margin: -3px -8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.key-item:hover {
+  background: rgba(230, 236, 255, 0.08);
+}
+
+.key-item:focus-visible {
+  outline: 2px solid var(--plume);
+  outline-offset: 1px;
+}
+
+/* The rocket the cameras are following */
+.key-item[aria-pressed='true'] {
+  background: rgba(230, 236, 255, 0.14);
+  box-shadow: inset 0 -2px 0 var(--plume);
+}
+
 /* Multiview key above the timeline: smaller, so up to 12 launches fit tidily */
 .mission-strip.is-key {
   gap: 4px 18px;
@@ -1203,6 +1227,349 @@ html, body {
   color: #1d1300;
   background: var(--plume);
   box-shadow: 0 0 12px rgba(255, 181, 71, 0.6);
+}
+
+
+/* ---------- SECRET MENU: Artemis II mission replay ----------
+   While it runs, <body> gets the class "artemis-mode": the normal dashboard
+   is hidden and the mission control display takes over. */
+
+body.artemis-mode .hero,
+body.artemis-mode .flight,
+body.artemis-mode #panel,
+body.artemis-mode .cockpit {
+  display: none !important;
+}
+
+/* Centre the globe on the full screen (the side panel is hidden) */
+body.artemis-mode #globe {
+  position: fixed;
+  inset: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.artemis-hud {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;   /* clicks pass through to the globe, except on panels */
+
+  --hud-green: #9fffb0;
+  --hud-bg: rgba(6, 10, 22, 0.78);
+  --hud-line: rgba(159, 255, 176, 0.22);
+}
+
+.artemis-hud[hidden] {
+  display: none;
+}
+
+/* The panels themselves can be clicked */
+.ah-main,
+.ah-crew,
+.ah-bar {
+  pointer-events: auto;
+  background: var(--hud-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--hud-line);
+  border-radius: 14px;
+}
+
+
+/* --- Top left: mission info --- */
+.ah-main {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  width: min(380px, calc(100vw - 48px));
+  padding: 18px 20px;
+}
+
+.ah-kicker {
+  margin: 0;
+  font-size: 13px;
+  color: var(--hud-green);
+}
+
+.ah-title {
+  margin: 2px 0 4px;
+  font-family: var(--display);
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.ah-sub {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--mist);
+}
+
+/* Mission clock and date */
+.ah-clock {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 0;
+  border-top: 1px solid var(--hud-line);
+  border-bottom: 1px solid var(--hud-line);
+}
+
+.ah-met {
+  font-family: var(--display);
+  font-size: 30px;
+  font-weight: 500;
+  color: var(--hud-green);
+  font-variant-numeric: tabular-nums;
+}
+
+.ah-date {
+  font-size: 13px;
+  color: var(--mist);
+}
+
+.ah-phase {
+  margin: 12px 0 8px;
+  font-family: var(--display);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+/* Three live numbers in a row */
+.ah-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.ah-stats dt {
+  font-size: 11px;
+  color: var(--mist);
+}
+
+.ah-stats dd {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The latest event and what it means */
+.ah-event {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--mist);
+  background: rgba(159, 255, 176, 0.06);
+  border-left: 3px solid var(--hud-green);
+  border-radius: 4px;
+}
+
+.ah-event b {
+  color: var(--ice);
+  font-weight: 500;
+}
+
+
+/* --- Top right: the crew --- */
+.ah-crew {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 250px;
+  padding: 14px 18px;
+}
+
+.ah-crew h3 {
+  margin: 0 0 8px;
+  font-family: var(--display);
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.ah-crew ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ah-crew li {
+  display: grid;
+  padding: 5px 0;
+  font-size: 14px;
+}
+
+.ah-crew li + li {
+  border-top: 1px solid var(--hud-line);
+}
+
+.ah-crew li span {
+  font-size: 12px;
+  color: var(--mist);
+}
+
+
+/* --- Bottom: playback controls and the timeline --- */
+.ah-bar {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 44px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px 30px;   /* extra room underneath for event labels */
+}
+
+.ah-btn {
+  padding: 7px 14px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ice);
+  background: transparent;
+  border: 1px solid var(--hud-line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.ah-btn:hover {
+  border-color: var(--hud-green);
+}
+
+.ah-btn:focus-visible,
+.ah-slider:focus-visible,
+.ah-tick:focus-visible {
+  outline: 2px solid var(--hud-green);
+  outline-offset: 2px;
+}
+
+.ah-speeds {
+  display: flex;
+  gap: 4px;
+}
+
+.ah-speed {
+  padding: 5px 9px;
+  font-size: 13px;
+}
+
+.ah-speed[aria-pressed='true'] {
+  color: #06100a;
+  background: var(--hud-green);
+  border-color: var(--hud-green);
+}
+
+/* The timeline slider, with event markers on top */
+.ah-timeline {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.ah-slider {
+  width: 100%;
+  accent-color: var(--hud-green);
+  cursor: pointer;
+}
+
+.ah-ticks {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 0;
+}
+
+/* One event marker: a small dot, with its name underneath */
+.ah-tick {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-50%);
+  padding: 0;
+  font: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.ah-tick::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mist);
+}
+
+.ah-tick span {
+  font-size: 10px;
+  color: var(--mist);
+  white-space: nowrap;
+}
+
+.ah-tick.passed::before {
+  background: var(--hud-green);
+}
+
+.ah-tick.passed span {
+  color: var(--ice);
+}
+
+.ah-tick:hover span {
+  color: var(--hud-green);
+}
+
+/* Small print at the very bottom */
+.ah-note {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 10px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--mist);
+  text-align: center;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
+}
+
+
+/* --- Narrow screens: hide the crew panel and event names --- */
+@media (max-width: 860px) {
+
+  .ah-crew,
+  .ah-tick span,
+  .ah-note {
+    display: none;
+  }
+
+  .ah-main {
+    top: 12px;
+    left: 12px;
+    padding: 12px 14px;
+  }
+
+  .ah-title {
+    font-size: 30px;
+  }
+
+  .ah-bar {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    flex-wrap: wrap;
+    padding-bottom: 16px;
+  }
+
+  .ah-timeline {
+    flex-basis: 100%;
+    order: 3;
+  }
 }
 
 

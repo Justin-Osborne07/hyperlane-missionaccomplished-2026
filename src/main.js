@@ -29,6 +29,7 @@ import './style.css';
 
 import { createGlobe, MULTI_COLORS } from './visualization/globe.js';
 import { createCockpit } from './visualization/cockpit.js';
+import { createArtemis } from './visualization/artemis.js';
 import { ROCKETS, rocketFor, findRocket } from './visualization/rockets.js';
 import { startCountdown } from './placeholders/countdown.js';
 import { renderWeather } from './placeholders/weather-card.js';
@@ -77,9 +78,14 @@ const state = {
   liveIndex: 0,
 
   // multiview: the ids of the launches ticked to fly together,
-  // and the search text filtering the launch list
+  // the search text filtering the launch list,
+  // and the id of the launch the cameras follow (clicked in the colour key)
   multiPicks: new Set(),
   search: '',
+  multiFocusId: null,
+
+  // the rocket the cockpit instruments use (the followed one in multiview)
+  focusRocket: null,
 
   // demo pickers. Canso is first in Justin's list, so it's the default.
   pad: launchPads[0],
@@ -209,7 +215,7 @@ function updateFlight(simT, tMax) {
     simT,
     tMax,
     events: EVENTS,
-    sepT: rocketFor(state.launch?.rocket).separationT,
+    sepT: (state.focusRocket || rocketFor(state.launch?.rocket)).separationT,
   });
 }
 
@@ -576,6 +582,9 @@ function selectLaunch() {
     state.launch = buildDemoLaunch(state.pad, state.orbit, state.rocket.name);
   }
 
+  // Single launch: the cockpit uses this launch's own rocket
+  state.focusRocket = null;
+
   // Yosry's flight path for this launch
   state.trajectory = getTrajectory(state.launch);
 
@@ -740,18 +749,19 @@ function selectMultiview() {
     return { launch, trajectory, rocket: rocketFor(launch.rocket) };
   });
 
-  // The soonest launch drives the countdown, timeline and cockpit
+  // The soonest launch drives the countdown
   state.launch = launches[0];
-  state.trajectory = list[0].trajectory;
 
-  const flightEnd = state.trajectory[state.trajectory.length - 1].t;
-  const firstRocket = list[0].rocket;
+  // The followed launch (clicked in the colour key) drives the timeline,
+  // the cockpit and the Side view. If it was unticked, follow the soonest.
+  let focus = launches.findIndex((l) => l.id === state.multiFocusId);
 
-  EVENTS = firstRocket.events.map((e, i) =>
-    i === firstRocket.events.length - 1 ? { ...e, t: flightEnd } : e
-  );
+  if (focus === -1) {
+    focus = 0;
+    state.multiFocusId = launches[0].id;
+  }
 
-  drawTimeline(flightEnd);
+  applyFocusTimeline(list[focus]);
 
 
   // --- Panels ---
@@ -764,7 +774,8 @@ function selectMultiview() {
 
   // --- Globe: all of them at once ---
 
-  globe.showMultiview(list);
+  multiList = list;
+  globe.showMultiview(list, focus);
 
 
   // --- Hero (top-left): countdown to the soonest launch ---
@@ -788,9 +799,13 @@ function selectMultiview() {
   // (smaller text in multiview, so a long key stays tidy)
   $('mission-details').classList.add('is-key');
 
+  // Each launch in the key is clickable: click it to make the cameras
+  // follow that rocket (see the click handler below selectMultiview)
   $('mission-details').innerHTML = list
     .map(({ launch, rocket }, i) => `
-      <div class="mission-item">
+      <div class="mission-item key-item" role="button" tabindex="0"
+           data-focus="${i}" aria-pressed="${i === focus}"
+           title="Follow ${launch.name} with the camera">
         <dt>
           <span class="key-dot" style="background:${MULTI_COLORS[i % MULTI_COLORS.length]}"></span>
           ${launch.rocket}
@@ -812,6 +827,85 @@ function selectMultiview() {
   $('spot-list').innerHTML = '<p class="muted">Pick a single launch to see where to watch it.</p>';
   $('back-to-launch').hidden = true;
 }
+
+
+// -----------------------------------------------------------------------------
+// applyFocusTimeline(item)
+// Point the timeline and cockpit instruments at one multiview launch:
+// its flight path, its rocket's event names and timings.
+// -----------------------------------------------------------------------------
+
+let multiList = [];
+
+function applyFocusTimeline(item) {
+
+  state.trajectory = item.trajectory;
+  state.focusRocket = item.rocket;
+
+  const flightEnd = item.trajectory[item.trajectory.length - 1].t;
+
+  EVENTS = item.rocket.events.map((e, i) =>
+    i === item.rocket.events.length - 1 ? { ...e, t: flightEnd } : e
+  );
+
+  drawTimeline(flightEnd);
+}
+
+
+// -----------------------------------------------------------------------------
+// Clicking a launch in the colour key (multiview): the cameras follow it.
+// If you're in Globe view, this also switches to Side view, so you see the
+// camera fly over and chase that rocket.
+// -----------------------------------------------------------------------------
+
+function focusKeyItem(item) {
+
+  const index = Number(item.dataset.focus);
+  const launch = pickedLaunches()[index];
+
+  if (!launch || state.mode !== 'multi') {
+    return;
+  }
+
+  state.multiFocusId = launch.id;
+
+  // The timeline and cockpit now describe this rocket
+  applyFocusTimeline(multiList[index]);
+
+  // Highlight it in the key
+  for (const el of document.querySelectorAll('.key-item')) {
+    el.setAttribute('aria-pressed', String(el === item));
+  }
+
+  globe.setFocus(index);
+
+  if (globe.getCameraMode() === 'globe') {
+    globe.setCameraMode('side');
+    applyCameraUI('side');
+  }
+}
+
+
+$('mission-details').addEventListener('click', (e) => {
+
+  const item = e.target.closest('.key-item');
+
+  if (item) {
+    focusKeyItem(item);
+  }
+});
+
+
+// Keyboard: Enter or Space on a focused key item does the same as a click
+$('mission-details').addEventListener('keydown', (e) => {
+
+  const item = e.target.closest('.key-item');
+
+  if (item && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault();
+    focusKeyItem(item);
+  }
+});
 
 
 // =============================================================================
@@ -1245,6 +1339,96 @@ zonesBtn.addEventListener('click', () => {
 $('back-to-launch').addEventListener('click', () => {
   globe.flyToLaunch();
   $('back-to-launch').hidden = true;
+});
+
+
+// =============================================================================
+// SECRET MENU: the Artemis II mission replay (see visualization/artemis.js)
+// -----------------------------------------------------------------------------
+// Nothing on the page mentions it. Three ways in:
+//   - type "artemis" anywhere (not while typing in the search box)
+//   - the Konami code: ↑ ↑ ↓ ↓ ← → ← → B A
+//   - click the "Launch Watcher" title 5 times quickly
+// =============================================================================
+
+const artemis = createArtemis(globe, {
+
+  // When the mission closes, rebuild the normal page
+  onExit: () => {
+    applyCameraUI('globe');
+    selectLaunch();
+  },
+});
+
+
+function openArtemis() {
+
+  if (artemis.isRunning()) {
+    return;
+  }
+
+  // Back to the normal camera first, and stop the page's own updates
+  globe.setCameraMode('globe');
+  applyCameraUI('globe');
+
+  weatherRequestId += 1;
+
+  if (stopCountdown) {
+    stopCountdown();
+    stopCountdown = null;
+  }
+
+  artemis.start();
+}
+
+
+// The last few keys pressed, to spot the secret words
+let typed = '';
+let keyHistory = [];
+
+const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown',
+  'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+
+window.addEventListener('keydown', (e) => {
+
+  // Ignore keys typed into the search box or any other text field
+  if (e.target.matches?.('input, textarea, select')) {
+    return;
+  }
+
+  // "artemis"
+  if (e.key.length === 1) {
+    typed = (typed + e.key.toLowerCase()).slice(-7);
+
+    if (typed === 'artemis') {
+      typed = '';
+      openArtemis();
+      return;
+    }
+  }
+
+  // Konami code
+  keyHistory = [...keyHistory, e.key.length === 1 ? e.key.toLowerCase() : e.key].slice(-KONAMI.length);
+
+  if (keyHistory.join() === KONAMI.join()) {
+    keyHistory = [];
+    openArtemis();
+  }
+});
+
+
+// Click the "Launch Watcher" title 5 times within 2.5 seconds
+let titleClicks = [];
+
+document.querySelector('.brand').addEventListener('click', () => {
+
+  const now = Date.now();
+  titleClicks = [...titleClicks, now].filter((t) => now - t < 2500);
+
+  if (titleClicks.length >= 5) {
+    titleClicks = [];
+    openArtemis();
+  }
 });
 
 

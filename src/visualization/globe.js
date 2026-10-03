@@ -13,6 +13,8 @@
 //                                               and animate the ascent + one lap
 //   showMultiview(flights)                   -> show SEVERAL launches at once,
 //                                               all flying at the same time
+//   setFocus(index)                          -> in multiview, which rocket the
+//                                               Side / Cockpit cameras follow
 //   setWeather(rating)                       -> recolour the flight path
 //   replay()                                 -> restart the rocket animation
 //   showViewingAreas(areas) / clearZones()   -> the three viewing zones (bonus)
@@ -372,9 +374,14 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
   //     rig (the 3D rocket, see buildRig), glow (the soft highlight),
   //     pos, dir (where it is and which way it's heading, updated every frame)
   //   }
-  // flights[0] is the "main" one: the timeline and the Side / Cockpit
-  // cameras follow it.
+  // flights[focus] is the "main" one: the timeline and the Side / Cockpit
+  // cameras follow it. (Always 0 for a single launch; in multiview it's
+  // changed with setFocus.)
   let flights = [];
+  let focus = 0;
+
+  // The flight the cameras follow
+  const mainFlight = () => flights[focus] || flights[0];
 
   // 'single' (one launch) or 'multi' (several at once)
   let viewMode = 'single';
@@ -405,12 +412,14 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
 
     if (viewMode === 'multi') {
 
-      globe.labelsData(flights.map((f) => ({
+      globe.labelsData(flights.map((f, i) => ({
         lat: f.launch.pad.lat,
         lon: f.launch.pad.lon,
         text: f.launch.name,
         color: f.color,
-        selected: true,
+
+        // the followed launch's label is bigger
+        selected: i === focus,
         pad: f.launch.pad,
       })));
 
@@ -833,6 +842,12 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
 
     const frame = (now) => {
 
+      // Nothing left to animate (e.g. the secret Artemis II replay took over
+      // the globe): stop this loop
+      if (flights.length === 0) {
+        return;
+      }
+
       // `%` (remainder) makes the animation loop
       const elapsed = (now - start) % (PLAYBACK_MS + ORBIT_LAP_MS + PAUSE_MS);
 
@@ -841,7 +856,7 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
       }
 
       // The cameras that ride along follow the main flight
-      const main = flights[0];
+      const main = mainFlight();
       const mainT = flightTime(main, elapsed);
 
       if (cameraMode === 'cockpit') {
@@ -880,6 +895,35 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
 
     // 3. The pause, after one full lap
     return flight.tMax + flight.orbit.periodS;
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // animateFallingStage(rig, tSince)
+  // After separation, the lower stage drifts on briefly, falls, tumbles and
+  // fades out. tSince = seconds (of flight time) since separation.
+  // ---------------------------------------------------------------------------
+
+  function animateFallingStage(rig, tSince) {
+
+    // Keeps coasting forward a little, slowing down (levels off at 2.5 units)
+    const coast = 2.5 * (1 - Math.exp(-tSince / 15));
+
+    // Falls faster and faster (like gravity: distance grows with time squared)
+    const fall = 0.0004 * tSince * tSince;
+
+    rig.lower.position.copy(rig.sep.pos)
+      .addScaledVector(rig.sep.dir, coast)
+      .addScaledVector(rig.sep.down, fall);
+
+    // Slowly tumble end over end
+    tumble.setFromAxisAngle(X_AXIS, 0.015 * tSince);
+    rig.lower.quaternion.copy(rig.sep.quat).multiply(tumble);
+
+    // Fade out, then hide
+    const opacity = Math.max(0, 1 - tSince / STAGE_FADE_S);
+    setStageOpacity(rig.lower, opacity);
+    rig.lower.visible = opacity > 0;
   }
 
 
@@ -941,29 +985,9 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
       separateStages(rig, flight.dir);
     }
 
-    // After separation: the lower stage drifts on briefly, falls, tumbles and fades
+    // After separation: the lower stage falls away (see animateFallingStage)
     if (rig.sep) {
-
-      const tSince = simT - sepT;   // seconds since separation
-
-      // Keeps coasting forward a little, slowing down (levels off at 2.5 units)
-      const coast = 2.5 * (1 - Math.exp(-tSince / 15));
-
-      // Falls faster and faster (like gravity: distance grows with time squared)
-      const fall = 0.0004 * tSince * tSince;
-
-      rig.lower.position.copy(rig.sep.pos)
-        .addScaledVector(rig.sep.dir, coast)
-        .addScaledVector(rig.sep.down, fall);
-
-      // Slowly tumble end over end
-      tumble.setFromAxisAngle(X_AXIS, 0.015 * tSince);
-      rig.lower.quaternion.copy(rig.sep.quat).multiply(tumble);
-
-      // Fade out, then hide
-      const opacity = Math.max(0, 1 - tSince / STAGE_FADE_S);
-      setStageOpacity(rig.lower, opacity);
-      rig.lower.visible = opacity > 0;
+      animateFallingStage(rig, simT - sepT);
     }
 
 
@@ -997,7 +1021,7 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
     flight.glow.scale.setScalar(GLOW_SIZE * pulse);
 
     // No glow for the main rocket in Cockpit view (we're inside it)
-    flight.glow.visible = !(cameraMode === 'cockpit' && flight === flights[0]);
+    flight.glow.visible = !(cameraMode === 'cockpit' && flight === mainFlight());
   }
 
 
@@ -1498,6 +1522,7 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
     showLaunch(launch, trajectory, weather) {
 
       viewMode = 'single';
+      focus = 0;
       rating = weather?.rating || 'none';
 
       clearFlights();
@@ -1520,11 +1545,13 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
     // Show SEVERAL launches at once, all flying at the same time.
     //   list: [{ launch, trajectory, rocket }, ...]
     // Each gets its own colour from MULTI_COLORS (in the same order).
-    // The Side and Cockpit cameras follow the first one.
+    // The Side and Cockpit cameras follow list[focusIndex] (the first one
+    // unless told otherwise; see setFocus).
     // -------------------------------------------------------------------------
-    showMultiview(list) {
+    showMultiview(list, focusIndex = 0) {
 
       viewMode = 'multi';
+      focus = focusIndex;
 
       clearFlights();
       flights = list.map((item, i) =>
@@ -1540,6 +1567,22 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
       drawPaths();
       flyTo();
       playAscent();
+    },
+
+
+    // -------------------------------------------------------------------------
+    // Multiview: choose which rocket the Side / Cockpit cameras follow
+    // (index into the list given to showMultiview). The camera glides over
+    // to it; its label on the globe gets bigger.
+    // -------------------------------------------------------------------------
+    setFocus(index) {
+
+      if (!flights[index]) {
+        return;
+      }
+
+      focus = index;
+      drawPads();
     },
 
 
@@ -1662,6 +1705,56 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
     /** Which camera mode is active: 'globe', 'side' or 'cockpit' */
     getCameraMode() {
       return cameraMode;
+    },
+
+
+    // -------------------------------------------------------------------------
+    // Behind-the-scenes tools for the secret Artemis II mission (artemis.js).
+    // It runs its own animation, so it needs direct access to the 3D scene,
+    // the camera, the rocket models, the Moon and the Sun.
+    // -------------------------------------------------------------------------
+    internals() {
+      return {
+        scene,
+        camera,
+        controls,
+        moon,
+        MOON_RADIUS,
+        ROCKET_SIZE,
+
+        // 3D position (a THREE.Vector3) for latitude, longitude, altitude
+        getCoords: (lat, lon, alt = 0) => toVec(globe.getCoords(lat, lon, alt)),
+        altFromKm,
+
+        computeOrbit,
+        orbitPoint,
+
+        buildRig,
+        removeRig,
+        resetStages,
+        separateStages,
+        animateFallingStage,
+        makeGlow,
+        setSunTime,
+
+        // Clear the normal view off the globe and stop its animation
+        suspend() {
+          cancelAnimationFrame(rafId);
+          cancelAnimationFrame(camMoveId);
+          clearFlights();
+          globe.labelsData([]).ringsData([]).pathsData([]).polygonsData([]).pointsData([]);
+          cameraMode = 'globe';
+          controls.autoRotate = false;
+          controls.enabled = false;
+        },
+
+        // Hand the globe back for the normal view (main.js then redraws it)
+        resume() {
+          moon.scale.setScalar(1);
+          drawPads();
+          handBackControls();
+        },
+      };
     },
 
 
