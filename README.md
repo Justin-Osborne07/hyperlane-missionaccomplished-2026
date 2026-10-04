@@ -1,4 +1,4 @@
-A little bit about our solution to Challenge #2 : Track #2 : we call it **Hyperlane**!
+A little bit about our solution to Challenge #2: we call it **Hyperlane**!
 
 Launch schedules, weather forecasts and viewing information in one dashboard.
 We built Hyperlane for the **Mission Acomplished Hackathon** as a team of three, second-year Computer Science students (who were inspired by Star Wars). It brings together upcoming launches, weather at the launch site and an interactive globe to help people explore a launch and understand where they might be able to see it.
