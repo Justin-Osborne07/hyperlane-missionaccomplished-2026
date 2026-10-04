@@ -26,6 +26,16 @@ export const KM_PER_UNIT = 63.71;
 const HOUR = 3600;
 const DAY = 86400;
 
+// lat/lon -> direction from the Earth's centre, in plain maths coordinates
+// (the same kind globe.js uses to describe orbits)
+const mathXYZ = (lat, lon) => {
+  const la = (lat * Math.PI) / 180;
+  const lo = (lon * Math.PI) / 180;
+  return [Math.cos(la) * Math.cos(lo), Math.cos(la) * Math.sin(lo), Math.sin(la)];
+};
+
+const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+
 
 // =============================================================================
 // KEY TIMES (seconds after launch, "mission elapsed time" or MET)
@@ -36,6 +46,7 @@ export const MET = {
   boosterSep: 132,                  // solid rocket boosters separate (~2 min)
   coreSep: 480,                     // core stage separates (~8 min)
   apogeeRaise: 2.28 * HOUR,         // burn into the high, stretched Earth orbit
+                                    // (fine-tuned by buildMissionPath, see below)
   tli: 25 * HOUR + 37 * 60,         // trans-lunar injection: leave for the Moon
   flybyStart: 4.86 * DAY,           // lunar flyby window opens (about 7 hours long)
   closest: 4.99 * DAY,              // closest to the Moon, farthest from Earth
@@ -92,6 +103,16 @@ export const PHASES = [
   { id: 'return', name: 'Coasting home', from: MET.flybyEnd, to: MET.entry, screen: 16 },
   { id: 'entry', name: 'Re-entry and splashdown', from: MET.entry, to: MET.splashdown, screen: 10 },
 ];
+
+// buildMissionPath() works out the exact moment to raise the orbit (so the
+// return lands off San Diego). This updates every list that uses that time.
+function setApogeeRaise(t) {
+  MET.apogeeRaise = t;
+  PHASES.find((p) => p.id === 'leo').to = t;
+  PHASES.find((p) => p.id === 'heo').from = t;
+  EVENTS.find((e) => e.label === 'High Earth orbit').t = t;
+}
+
 
 // Total length of the replay at 1× speed, in seconds
 export const PLAY_LENGTH = PHASES.reduce((sum, p) => sum + p.screen, 0);
@@ -182,20 +203,51 @@ export function buildMissionPath(ctx) {
     return toScene(p.lat, p.lon, leoAlt);
   };
 
-  // Where the low orbit is when the high orbit begins (its lowest point, perigee)
-  const thetaEnd = (2 * Math.PI * (MET.apogeeRaise - MET.coreSep)) / orbit.periodS;
-
   const unitAt = (theta) => {
     const p = orbitPoint(orbit, theta);
     return toScene(p.lat, p.lon, 0).normalize();
   };
 
 
+  // --- Planning the mission (like real mission planners do) ---
+  //
+  // The figure-8 trip leaves Earth from the LOWEST point of the high orbit
+  // (perigee) and comes back over the OPPOSITE side of the Earth. So to come
+  // home over the Pacific, perigee must be on the far side of the Earth from
+  // the re-entry point. We choose re-entry about 16° (1,780 km) before the
+  // splashdown point, then work out how long to stay in low orbit so that
+  // the orbit is raised at exactly the right spot.
+
+  // How far round the low orbit (as an angle) the splashdown point is.
+  // orbit.P and orbit.D are the two directions that describe the orbit.
+  const sd = mathXYZ(SPLASHDOWN.lat, SPLASHDOWN.lon);
+  const thetaSplash = Math.atan2(dot(sd, orbit.D), dot(sd, orbit.P));
+
+  const ENTRY_ARC = 16 * (Math.PI / 180);
+  const thetaEntry = thetaSplash - ENTRY_ARC;
+  const thetaPerigee = thetaEntry - Math.PI;
+
+  // Time to raise the orbit: when the low orbit reaches thetaPerigee,
+  // sometime between 1.4 and about 3 hours after launch
+  const fullTurn = 2 * Math.PI;
+  const turns = (((thetaPerigee % fullTurn) + fullTurn) % fullTurn) / fullTurn;
+  let raiseAt = MET.coreSep + turns * orbit.periodS;
+
+  while (raiseAt < 1.4 * HOUR) {
+    raiseAt += orbit.periodS;
+  }
+
+  setApogeeRaise(raiseAt);
+
+  const thetaEnd = (2 * Math.PI * (MET.apogeeRaise - MET.coreSep)) / orbit.periodS;
+
+
   // --- The mission's flat "plane" ---
   // Everything after the low orbit happens in one flat plane. We describe
   // points in it with two directions:
-  //   X: the direction Orion is moving at perigee (and roughly towards the Moon)
-  //   Y: away from the perigee point (so perigee is at (0, -r))
+  //   X: the direction Orion is moving at perigee (and towards the Moon)
+  //   Y: away from the perigee point (so perigee is at (0, -r), and the
+  //      re-entry point is straight across the Earth at (0, +r))
   const xAxis = unitAt(thetaEnd + Math.PI / 2);
   const yAxis = unitAt(thetaEnd).negate();
   const planeNormal = new THREE.Vector3().crossVectors(xAxis, yAxis).normalize();
@@ -207,12 +259,15 @@ export function buildMissionPath(ctx) {
   // --- 3. High Earth orbit (an ellipse with the Earth at one focus) ---
 
   const rPerigee = leoAt(MET.apogeeRaise).length();
-  const rApogee = (6371 + 70000) / KM_PER_UNIT;     // ~70,000 km up
-
-  const a = (rPerigee + rApogee) / 2;                // semi-major axis
-  const e = (rApogee - rPerigee) / (rApogee + rPerigee);   // how stretched
-  const b = a * Math.sqrt(1 - e * e);                // semi-minor axis
   const heoPeriod = MET.tli - MET.apogeeRaise;        // one lap, ending at TLI
+
+  // The orbit's size follows from its period (Kepler's third law):
+  //   a = ∛( μ × (period / 2π)² )
+  const aKm = Math.cbrt(398600 * Math.pow(heoPeriod / (2 * Math.PI), 2));
+  const a = aKm / KM_PER_UNIT;                        // semi-major axis
+  const rApogee = 2 * a - rPerigee;                   // ~70,000 km up
+  const e = (rApogee - rPerigee) / (rApogee + rPerigee);   // how stretched
+  const b = a * Math.sqrt(1 - e * e);                 // semi-minor axis
 
   const heoAt = (met) => {
 
@@ -240,72 +295,56 @@ export function buildMissionPath(ctx) {
   const moonPosition = fromPlane(moonDist, 0);
 
 
-  // --- 4 + 5. To the Moon and back: waypoints (time, position) ---
-  // Out along +Y, round the far side of the Moon clockwise (seen from the
-  // plane's normal), back along -Y, crossing the outbound path near Earth.
+  // --- 4. The figure-8: to the Moon and back ---
+  //
+  //          ↗ ─────────╮
+  //   Earth      ✕       Moon      out below, round the far side of the
+  //          ↖ ─────────╯          Moon, back over the top, crossing the
+  //                                outbound path halfway
+  //
+  // Waypoint times near the Earth come from how long a free fall from that
+  // height takes, so Orion speeds up realistically as it nears Earth.
 
   const D = moonDist;
   const r = flybyR;
   const day = (d) => d * DAY;
+  const entryR = 100 + 122 / KM_PER_UNIT;
 
-  // Waypoint times near the Earth are set from how long a free fall from
-  // that height takes, so Orion speeds up realistically as it nears Earth.
-  // The points beside the Moon are pushed out a little, because the smooth
-  // curve cuts slightly inside them.
   const waypoints = [
+
+    // leaving Earth from perigee, heading +X
     [MET.tli, fromPlane(0, -rPerigee)],
-    [day(1.15), fromPlane(600, -110)],
-    [day(1.35), fromPlane(1500, 80)],
-    [day(1.9), fromPlane(2600, 330)],
-    [day(2.7), fromPlane(3650, 520)],
-    [day(3.6), fromPlane(4750, 560)],
-    [day(4.4), fromPlane(5650, 400)],
+    [day(1.12), fromPlane(600, -175)],
+    [day(1.4), fromPlane(1500, -250)],
+
+    // crossing the middle, climbing to pass over the top of the Moon
+    [day(2.3), fromPlane(D * 0.45, 0)],
+    [day(3.4), fromPlane(D * 0.7, D * 0.07)],
+    [day(4.3), fromPlane(D * 0.88, D * 0.06)],
+
+    // round the far side of the Moon (the points beside the Moon are pushed
+    // out a little, because the smooth curve cuts slightly inside them)
     [day(4.8), fromPlane(D - 170, 225)],
     [day(4.92), fromPlane(D + r * 0.55, r * 0.97)],
     [MET.closest, fromPlane(D + r, 0)],
     [day(5.06), fromPlane(D + r * 0.55, -r * 0.97)],
     [day(5.2), fromPlane(D - 170, -240)],
-    [day(6.0), fromPlane(5000, -560)],
-    [day(7.0), fromPlane(3500, -520)],
-    [day(8.1), fromPlane(2000, -300)],
-    [day(8.75), fromPlane(900, 60)],
+
+    // heading home below the Moon, crossing the middle again
+    [day(5.7), fromPlane(D * 0.88, -D * 0.06)],
+    [day(6.6), fromPlane(D * 0.7, -D * 0.07)],
+    [day(7.6), fromPlane(D * 0.45, 0)],
+
+    // falling back to Earth over the top, arriving at a shallow angle
+    [day(8.4), fromPlane(D * 0.25, D * 0.035)],
+    [day(8.86), fromPlane(D * 0.1, D * 0.05)],
+    [day(8.99), fromPlane(450, 150)],
+    [MET.entry, fromPlane(0, entryR)],
+
+    // (never reached: only steers the curve's direction at the entry point
+    // so it joins the re-entry smoothly)
+    [MET.entry + HOUR, fromPlane(-Math.sin(ENTRY_ARC / 2) * 100.6, Math.cos(ENTRY_ARC / 2) * 100.6)],
   ];
-
-
-  // Final approach: fall towards the splashdown point from high above it,
-  // reaching the top of the atmosphere about 1,500 km before it.
-  const splashDir = toScene(SPLASHDOWN.lat, SPLASHDOWN.lon, 0).normalize();
-  const lastPlane = waypoints[waypoints.length - 1][1];
-
-  // Entry point: tilted from the splashdown point towards where Orion is
-  // coming from, so it arrives at a shallow angle
-  const towardsArrival = lastPlane.clone().normalize().sub(splashDir).normalize();
-  const entryDir = splashDir.clone().addScaledVector(towardsArrival, 0.24).normalize();
-  const entryR = 100 + 122 / KM_PER_UNIT;
-
-  waypoints.push(
-    [day(8.95), entryDir.clone().multiplyScalar(560)],
-    [MET.entry - 6 * 60, entryDir.clone().multiplyScalar(118)],
-    [MET.entry, entryDir.clone().multiplyScalar(entryR)],
-  );
-
-
-  // Re-entry (its own simple curve, so it can't dip below the sea): follow
-  // the ground from the entry point to the splashdown point, coming down
-  // from 122 km to sea level, falling fastest at the start.
-  const reentryAt = (met) => {
-
-    const f = Math.min(Math.max((met - MET.entry) / (MET.splashdown - MET.entry), 0), 1);
-
-    // Blend the direction from entry point to splashdown point
-    const dir = entryDir.clone().lerp(splashDir, f).normalize();
-
-    // Altitude: 122 km -> 0, curving down quickly then gently (parachutes)
-    const altUnits = (122 / KM_PER_UNIT) * Math.pow(1 - f, 1.6);
-
-    return dir.multiplyScalar(100.05 + altUnits);
-  };
-
 
   // A smooth curve through all the waypoints ("centripetal" stops it
   // overshooting at tight turns, like going round the Moon)
@@ -326,6 +365,33 @@ export function buildMissionPath(ctx) {
     const u = (i - 1 + Math.min(Math.max(f, 0), 1)) / (times.length - 1);
 
     return curve.getPoint(u);
+  };
+
+
+  // --- 5. Re-entry ---
+  // From the entry point over the Pacific to the splashdown point, curving
+  // smoothly (a curve with a "pull" point halfway along the orbit's
+  // direction), coming down from 122 km to sea level.
+
+  const splashDir = toScene(SPLASHDOWN.lat, SPLASHDOWN.lon, 0).normalize();
+  const entryDir = yAxis.clone();
+  const pullDir = fromPlane(-Math.sin(ENTRY_ARC / 2), Math.cos(ENTRY_ARC / 2)).normalize();
+
+  const reentryAt = (met) => {
+
+    const f = Math.min(Math.max((met - MET.entry) / (MET.splashdown - MET.entry), 0), 1);
+
+    // Curved blend of the three directions (a "quadratic Bézier")
+    const dir = new THREE.Vector3()
+      .addScaledVector(entryDir, (1 - f) * (1 - f))
+      .addScaledVector(pullDir, 2 * f * (1 - f))
+      .addScaledVector(splashDir, f * f)
+      .normalize();
+
+    // Altitude: 122 km -> 0, falling fastest at the start (then parachutes)
+    const altUnits = (entryR - 100) * Math.pow(1 - f, 1.6);
+
+    return dir.multiplyScalar(100.02 + altUnits);
   };
 
 

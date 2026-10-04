@@ -1525,6 +1525,27 @@ body.artemis-mode #globe {
   color: var(--hud-green);
 }
 
+/* Name tags following the Earth, Moon and Orion (positioned by artemis.js) */
+.ah-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: 14px 0 0 12px;   /* just below and right of the object */
+  font-size: 13px;
+  color: var(--ice);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.ah-label[hidden] {
+  display: none;
+}
+
+.ah-label-orion {
+  color: var(--plume);
+}
+
 /* Small print at the very bottom */
 .ah-note {
   position: absolute;

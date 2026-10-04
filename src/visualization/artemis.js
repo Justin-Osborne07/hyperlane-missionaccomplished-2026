@@ -80,9 +80,13 @@ export function createArtemis(globeApi, { onExit } = {}) {
   let rig = null;          // the SLS / Orion 3D model
   let glow = null;         // Orion's glow, so it's visible from anywhere
   let splashGlow = null;   // marks the splashdown point
+  let earthHalo = null;    // soft glows that make the Earth and Moon easy to
+  let moonHalo = null;     // find when zoomed far out
   let trailAll = null;     // the whole path, faint
   let trailDone = null;    // the part already flown, bright
   let trailTimes = [];     // mission time of each trail point
+  let trailOriginal = null; // the sampled points, unchanged
+  let trailMoved = -1;     // which bright-trail point was moved to Orion last frame
 
   // Saved so the Moon can be put back afterwards
   const savedMoon = { position: new THREE.Vector3(), scale: 1 };
@@ -147,6 +151,16 @@ export function createArtemis(globeApi, { onExit } = {}) {
     splashGlow.position.copy(mission.splashDir).multiplyScalar(100.2);
     splashGlow.scale.setScalar(0.025);
 
+    // Halos at the centres of the Earth and Moon. Close up they're hidden
+    // inside the planet; far away (when the planet is just a dot) they glow
+    // around it so you can spot it.
+    earthHalo = gi.makeGlow('#6fa8ff');
+    earthHalo.scale.setScalar(0.07);
+
+    moonHalo = gi.makeGlow('#d8d8d0');
+    moonHalo.position.copy(mission.moonPosition);
+    moonHalo.scale.setScalar(0.045);
+
 
     // --- The Moon: move it to its real place and size for the mission ---
 
@@ -164,6 +178,7 @@ export function createArtemis(globeApi, { onExit } = {}) {
 
     // --- The path, drawn as two lines over the same points ---
 
+    trailMoved = -1;
     buildTrail();
 
 
@@ -197,7 +212,7 @@ export function createArtemis(globeApi, { onExit } = {}) {
     // Remove everything the mission added
     gi.removeRig(rig);
 
-    for (const sprite of [glow, splashGlow]) {
+    for (const sprite of [glow, splashGlow, earthHalo, moonHalo]) {
       scene.remove(sprite);
       sprite.material.dispose();
     }
@@ -208,6 +223,7 @@ export function createArtemis(globeApi, { onExit } = {}) {
     }
 
     trailAll.geometry.dispose();
+    trailDone.geometry.dispose();
 
     // Put the Moon back
     gi.moon.position.copy(savedMoon.position);
@@ -256,8 +272,15 @@ export function createArtemis(globeApi, { onExit } = {}) {
       opacity: 0.28,
     }));
 
-    // Bright: the part flown so far (drawRange is set every frame)
-    trailDone = new THREE.Line(geometry, new THREE.LineBasicMaterial({
+    // Bright: the part flown so far. It has its own copy of the points so
+    // its last point can be moved to exactly where Orion is each frame
+    // (see updateTrail), instead of stopping at the previous sample.
+    trailOriginal = positions;
+
+    const doneGeometry = new THREE.BufferGeometry();
+    doneGeometry.setAttribute('position', new THREE.BufferAttribute(positions.slice(), 3));
+
+    trailDone = new THREE.Line(doneGeometry, new THREE.LineBasicMaterial({
       color: '#ffb547',
       transparent: true,
       opacity: 0.95,
@@ -294,6 +317,7 @@ export function createArtemis(globeApi, { onExit } = {}) {
     updateScene(met, now);
     updateCamera(met, dt);
     hud.update(met, play, mission);
+    hud.placeLabels(camera, mission, orionPoint);
 
     rafId = requestAnimationFrame(frame);
   }
@@ -306,6 +330,9 @@ export function createArtemis(globeApi, { onExit } = {}) {
 
   const UP = new THREE.Vector3(0, 1, 0);
 
+  // Where Orion's glow is (used to place its label)
+  const orionPoint = new THREE.Vector3();
+
   function updateScene(met, now) {
 
     const pos = mission.positionAt(met);
@@ -313,28 +340,55 @@ export function createArtemis(globeApi, { onExit } = {}) {
 
 
     // --- Orion's glow, always visible ---
+    // While the rocket model is shown, the glow sits on the middle of the
+    // part still flying (the whole rocket, then just the upper stack after
+    // separation), not at its base, so the glow and the model line up.
+
+    const showRocket = met < MET.apogeeRaise;
+
+    // The path marks the bottom of whatever is still flying. Before
+    // separation that's the bottom of the whole rocket. After it, it's the
+    // bottom of the upper stack, so the model slides back (over 20 seconds
+    // of flight) to keep the flying part on the path, right at the trail's end.
+    const S = gi.ROCKET_SIZE;
+    const upperBase = rig.upperFlame.position.y;     // metres up the rocket
+    const slide = smooth((met - MET.boosterSep) / 20);
+    const back = upperBase * slide * S;              // how far the model slides back
+
+    // Middle of the flying part, measured from the path point
+    const middle = ((rig.height - upperBase * slide) / 2) * S;
 
     glow.position.copy(pos);
+
+    if (showRocket) {
+      glow.position.addScaledVector(dir, middle);
+    }
+
     glow.scale.setScalar(0.045 * (1 + 0.15 * Math.sin(now / 400)));
+    orionPoint.copy(glow.position);
+
+    // Name tag: what you're actually looking at
+    hud.setCraftName(
+      met < MET.coreSep ? 'SLS rocket'
+        : met < MET.apogeeRaise ? 'Orion + upper stage'
+          : 'Orion capsule'
+    );
 
 
-    // --- The bright "flown so far" trail ---
+    // --- The bright "flown so far" trail, ending exactly at Orion ---
 
-    let count = trailTimes.findIndex((t) => t > met);
-    if (count === -1) count = trailTimes.length;
-    trailDone.geometry.setDrawRange(0, count);
+    updateTrail(met, pos);
 
 
     // --- The rocket model: only near Earth, where it's big enough to see ---
 
-    const showRocket = met < MET.apogeeRaise;
     rig.root.visible = showRocket;
 
     if (!showRocket) {
       return;
     }
 
-    rig.root.position.copy(pos);
+    rig.root.position.copy(pos).addScaledVector(dir, -back);
     rig.root.quaternion.setFromUnitVectors(UP, dir);
 
     // Stage separation (and undoing it if the timeline is dragged back)
@@ -356,6 +410,41 @@ export function createArtemis(globeApi, { onExit } = {}) {
     const flicker = 1 + 0.12 * Math.sin(now / 35) + 0.08 * Math.random();
     rig.lowerFlame.scale.set(1, flicker, 1);
     rig.upperFlame.scale.set(1, flicker, 1);
+  }
+
+
+  // 0 -> 1 with gentle start and end (for slides and fades)
+  function smooth(x) {
+    const t = Math.min(Math.max(x, 0), 1);
+    return t * t * (3 - 2 * t);
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // updateTrail(met, pos)
+  // Shows the bright trail up to the last sample before met, plus one extra
+  // point placed exactly at Orion's position, so there's never a gap between
+  // the end of the trail and the spacecraft.
+  // ---------------------------------------------------------------------------
+
+  function updateTrail(met, pos) {
+
+    let count = trailTimes.findIndex((t) => t > met);
+    if (count === -1) count = trailTimes.length - 1;
+
+    const attr = trailDone.geometry.attributes.position;
+
+    // Put back the point we moved last frame
+    if (trailMoved >= 0) {
+      attr.setXYZ(trailMoved, trailOriginal[trailMoved * 3], trailOriginal[trailMoved * 3 + 1], trailOriginal[trailMoved * 3 + 2]);
+    }
+
+    // Move the next point to Orion, and draw up to and including it
+    attr.setXYZ(count, pos.x, pos.y, pos.z);
+    trailMoved = count;
+
+    attr.needsUpdate = true;
+    trailDone.geometry.setDrawRange(0, count + 1);
   }
 
 
@@ -625,6 +714,11 @@ function buildHud() {
 
     </section>
 
+    <!-- Name tags that follow the Earth, the Moon and Orion on screen -->
+    <span class="ah-label" data-label="earth">Earth</span>
+    <span class="ah-label" data-label="moon">Moon</span>
+    <span class="ah-label ah-label-orion" data-label="orion">Orion</span>
+
     <p class="ah-note">
       Replay based on NASA's published Artemis II timeline. Times are approximate and the flight path is an illustration.
       Distances in space are true scale. Drag to look around, scroll to zoom. Space pauses, arrow keys jump between events, Esc closes.
@@ -694,6 +788,57 @@ function buildHud() {
   });
 
   const km = (n) => `${Math.round(n).toLocaleString()} km`;
+
+
+  // ---------------------------------------------------------------------------
+  // placeLabels(camera, mission, orionPoint)
+  // Moves the Earth, Moon and Orion name tags to where those things are on
+  // screen. "project" turns a 3D position into a screen position.
+  // The Earth and Moon tags only show when zoomed out (when they're small).
+  // ---------------------------------------------------------------------------
+
+  const labels = {
+    earth: root.querySelector('[data-label="earth"]'),
+    moon: root.querySelector('[data-label="moon"]'),
+    orion: root.querySelector('[data-label="orion"]'),
+  };
+
+  const screenPoint = new THREE.Vector3();
+
+  function place(label, worldPos, camera, show) {
+
+    screenPoint.copy(worldPos).project(camera);
+
+    // z > 1 means it's behind the camera
+    const visible = show && screenPoint.z < 1;
+    label.hidden = !visible;
+
+    if (visible) {
+      const x = ((screenPoint.x + 1) / 2) * window.innerWidth;
+      const y = ((1 - screenPoint.y) / 2) * window.innerHeight;
+      label.style.transform = `translate(${x}px, ${y}px)`;
+    }
+  }
+
+  // The spacecraft's name tag changes as the mission goes on
+  let craftName = '';
+
+  hud.setCraftName = (name) => {
+    if (name !== craftName) {
+      craftName = name;
+      labels.orion.textContent = name;
+    }
+  };
+
+  hud.placeLabels = (camera, mission, orionPoint) => {
+
+    const toEarth = camera.position.length();
+    const toMoon = camera.position.distanceTo(mission.moonPosition);
+
+    place(labels.earth, new THREE.Vector3(0, 0, 0), camera, toEarth > 1500);
+    place(labels.moon, mission.moonPosition, camera, toMoon > 1200);
+    place(labels.orion, orionPoint, camera, true);
+  };
 
 
   // ---------------------------------------------------------------------------
