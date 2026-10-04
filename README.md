@@ -40,7 +40,8 @@ Yosry — Live launch data :
 - Extracted mission names, launch windows and launch-pad coordinates for the dashboard.
 - Provided the live launch data used by the upcoming-launch list and countdown.
 
-  Built with
+
+Built with
 
 - JavaScript, HTML and CSS
 - Vite
