@@ -4,7 +4,7 @@
 // SECRET MENU: a full replay of NASA's Artemis II mission (April 2026).
 //
 // Opened from main.js by typing "artemis", the Konami code, or clicking the
-// "Launch Watcher" title 5 times. While it runs it takes over the globe:
+// Hyperlane logo 5 times. While it runs it takes over the globe:
 //
 //   - SLS launches from Launch Complex 39B (real 3D model, stages separate)
 //   - Orion circles the Earth, then spends a day in a high stretched orbit

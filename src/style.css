@@ -373,6 +373,13 @@ html, body {
   letter-spacing: 0.01em;
 }
 
+/* The Hyperlane logo at the top of the panel: as wide as the panel allows */
+.brand img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 /* ---------- Panel top: title + tabs ----------
    "sticky" pins it to the top while the tab content scrolls underneath.
    The negative side margins stretch it over the panel's side padding so

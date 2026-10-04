@@ -9,10 +9,13 @@
     <meta charset="UTF-8" />
     <!-- Makes the page scale properly on phones -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Launch Watcher</title>
+    <title>Hyperlane: launch intelligence and weather</title>
 
-    <!-- Rocket emoji as the browser tab icon (no image file needed) -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>" />
+    <!-- Browser tab icon: the team picture (files are in the public/ folder).
+         The bigger one is used when the site is saved to a phone's home screen. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
 
     <!-- Load the Saira fonts from Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -77,7 +80,11 @@
         <!-- Top of the panel: title + tab buttons. Stays put when the panel scrolls. -->
         <div class="panel-top">
 
-          <p class="brand">Launch Watcher</p>
+          <!-- The Hyperlane logo (public/hyperlane-logo.png).
+               Also the secret menu's trigger: click it 5 times quickly. -->
+          <p class="brand">
+            <img src="/hyperlane-logo.png" alt="Hyperlane: launch intelligence and weather" />
+          </p>
 
           <!-- Tab buttons (switching is handled in main.js) -->
           <div id="tabs" class="tabs" role="tablist" aria-label="Panel sections">

@@ -1366,7 +1366,7 @@ $('back-to-launch').addEventListener('click', () => {
 // Nothing on the page mentions it. Three ways in:
 //   - type "artemis" anywhere (not while typing in the search box)
 //   - the Konami code: ↑ ↑ ↓ ↓ ← → ← → B A
-//   - click the "Launch Watcher" title 5 times quickly
+//   - click the Hyperlane logo 5 times quickly
 // =============================================================================
 
 const artemis = createArtemis(globe, {
@@ -1435,7 +1435,7 @@ window.addEventListener('keydown', (e) => {
 });
 
 
-// Click the "Launch Watcher" title 5 times within 2.5 seconds
+// Click the Hyperlane logo 5 times within 2.5 seconds
 let titleClicks = [];
 
 document.querySelector('.brand').addEventListener('click', () => {
