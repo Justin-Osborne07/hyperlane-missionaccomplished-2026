@@ -1,6 +1,8 @@
 // Demo launch and trajectory data matching the team data contract.
 // Legacy mock exports remain for compatibility with other project files.
 
+import { HEIGHTS, GTO, circular } from './orbits.js';
+
 const EARTH_R_KM = 6371;
 
 // Convert degrees <-> radians
@@ -39,15 +41,20 @@ export const mockLaunch = {
 // Builds a launch object (same shape as mockLaunch) for any launch site and
 // target orbit, so we can switch between Justin's launch sites.
 
-// The three orbit types from the challenge brief, with their inclinations
+// The three orbit types from the challenge brief (with its inclinations),
+// plus GTO (the long transfer orbit towards geostationary height).
+// Heights are typical real ones:
+//   LEO 420 km (space station height), Polar 800 km, SSO 600 km,
+//   GTO a 200 × 35,786 km ellipse, tilted by the launch site's latitude
 export const ORBITS = {
-  LEO: { name: 'Low Earth orbit', inclination: 45.1 },
-  Polar: { name: 'Polar orbit', inclination: 90 },
-  SSO: { name: 'Sun-synchronous orbit', inclination: 98.1 },
+  LEO: { name: 'Low Earth orbit', inclination: 45.1, shape: circular(HEIGHTS.station) },
+  Polar: { name: 'Polar orbit', inclination: 90, shape: circular(HEIGHTS.polar) },
+  SSO: { name: 'Sun-synchronous orbit', inclination: 98.1, shape: circular(HEIGHTS.sso) },
+  GTO: { name: 'Geostationary transfer orbit', inclination: null, shape: GTO },
 };
 
 // pad:        one entry from Justin's launch-pads.js ({ id, name, lat, lon })
-// orbitKey:   'LEO' | 'Polar' | 'SSO'
+// orbitKey:   'LEO' | 'Polar' | 'SSO' | 'GTO'
 // rocketName: e.g. 'Falcon 9' (see rockets.js)
 export function buildDemoLaunch(pad, orbitKey = 'LEO', rocketName = 'Falcon 9') {
 
@@ -64,7 +71,12 @@ export function buildDemoLaunch(pad, orbitKey = 'LEO', rocketName = 'Falcon 9') 
 
     pad: pad,
     orbit: orbitKey,
-    inclination: orbit.inclination,
+
+    // GTO has no fixed tilt: it launches due east, tilted by the site's latitude
+    inclination: orbit.inclination ?? Math.ceil(Math.abs(pad.lat) * 10) / 10,
+
+    // the orbit's height (see orbits.js)
+    orbitShape: orbit.shape,
   };
 }
 
@@ -90,8 +102,9 @@ export function makeMockTrajectory(launch, steps = 80) {
   // How far downrange the path goes, in km
   const totalKm = 1800;
 
-  // Final altitude, in km
-  const totalAlt = 200;
+  // Final altitude, in km: the orbit's lowest height, or 200 km
+  // (capped at 1,000 km, like Yosry's trajectory.js)
+  const totalAlt = Math.min(launch.orbitShape?.perigeeKm ?? 200, 1000);
 
   // Seconds from liftoff to orbit (9 minutes)
   const totalT = 540;

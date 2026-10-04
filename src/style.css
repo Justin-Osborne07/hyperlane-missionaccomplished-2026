@@ -527,10 +527,15 @@ html, body {
   gap: 8px;
 }
 
-/* Orbit buttons: three equal-width pills in one row */
+/* Orbit buttons: four equal-width pills in one row (LEO, Polar, SSO, GTO) */
 .choices-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.choices-row .choice {
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
 /* One pill button */

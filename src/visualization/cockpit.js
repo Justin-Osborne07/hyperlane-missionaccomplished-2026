@@ -20,9 +20,10 @@
 // How big the porthole is, as a fraction of the visible area (width, height)
 const WINDOW_SIZE = { w: 0.3, h: 0.33 };
 
-// Dial ranges
-const ALT_MAX_KM = 250;
-const SPEED_MAX_KMS = 8;
+// Dial ranges (the green numbers underneath show values beyond these,
+// e.g. the top of a GTO orbit at 35,786 km)
+const ALT_MAX_KM = 1000;
+const SPEED_MAX_KMS = 12;
 
 
 // =============================================================================
@@ -245,7 +246,7 @@ export function createCockpit(container) {
       altNeedle.style.transform = `rotate(${needleAngle(altKm, ALT_MAX_KM)}deg)`;
       speedNeedle.style.transform = `rotate(${needleAngle(speedKmS, SPEED_MAX_KMS)}deg)`;
 
-      altText.textContent = altKm.toFixed(1);
+      altText.textContent = altKm < 1000 ? altKm.toFixed(1) : Math.round(altKm).toLocaleString();
       speedText.textContent = speedKmS.toFixed(2);
 
       // Lamps: rebuild if the rocket changed, then light the passed events

@@ -47,6 +47,7 @@ import { loadUpcomingLaunches } from './launches/launch-adapter.js';
 
 // Yosry's flight path
 import { getTrajectory } from './launches/trajectory.js';
+import { keplerState, describeShape } from './launches/orbits.js';
 
 // Demo launches, plus the older flight path used as a backup
 import {
@@ -86,6 +87,9 @@ const state = {
 
   // the rocket the cockpit instruments use (the followed one in multiview)
   focusRocket: null,
+
+  // the shape of the orbit the cockpit instruments use ({ perigeeKm, apogeeKm })
+  orbitShape: null,
 
   // demo pickers. Canso is first in Justin's list, so it's the default.
   pad: launchPads[0],
@@ -239,15 +243,20 @@ function telemetryAt(simT) {
     return { altKm: 0, speedKmS: 0 };
   }
 
-  // In orbit (after the trajectory ends): steady height, and the real speed
-  // needed to stay in a circular orbit:  speed = √(μ / r)
+  // In orbit (after the trajectory ends): height and speed from Kepler's
+  // law (see orbits.js). Steady on a circular orbit; on a stretched one
+  // like GTO, fast and low at the bottom, slow and high at the top.
   const last = traj[traj.length - 1];
 
   if (simT > last.t) {
-    return {
-      altKm: last.altKm,
-      speedKmS: Math.sqrt(398600 / (EARTH_R_KM + last.altKm)),
-    };
+
+    const shape = state.orbitShape
+      ? { perigeeKm: last.altKm, apogeeKm: Math.max(state.orbitShape.apogeeKm, last.altKm) }
+      : { perigeeKm: last.altKm, apogeeKm: last.altKm };
+
+    const orbitNow = keplerState(shape, simT - last.t);
+
+    return { altKm: orbitNow.altKm, speedKmS: orbitNow.speedKmS };
   }
 
   // Position (lat, lon, altitude) at any time, blending between trajectory points
@@ -582,8 +591,9 @@ function selectLaunch() {
     state.launch = buildDemoLaunch(state.pad, state.orbit, state.rocket.name);
   }
 
-  // Single launch: the cockpit uses this launch's own rocket
+  // Single launch: the cockpit uses this launch's own rocket and orbit
   state.focusRocket = null;
+  state.orbitShape = state.launch.orbitShape || null;
 
   // Yosry's flight path for this launch
   state.trajectory = getTrajectory(state.launch);
@@ -675,12 +685,19 @@ function selectLaunch() {
 
   // --- Mission details (above the timeline) ---
 
+  // Real launches' inclination and height are estimates (see launch-adapter.js)
+  const est = launch.estimated ? ' (est.)' : '';
+
   const missionRows = [
     ['Rocket', launch.rocket],
     ['Launch site', launch.pad.name],
     ['Target orbit', launch.orbitLabel || ORBITS[launch.orbit]?.name || launch.orbit],
-    ['Inclination', `${launch.inclination}°`],
+    ['Inclination', `${launch.inclination}°${est}`],
   ];
+
+  if (launch.orbitShape) {
+    missionRows.push(['Orbit height', `${describeShape(launch.orbitShape)}${est}`]);
+  }
 
   // Real launches also show their status, e.g. "Go for Launch"
   if (launch.status) {
@@ -841,6 +858,7 @@ function applyFocusTimeline(item) {
 
   state.trajectory = item.trajectory;
   state.focusRocket = item.rocket;
+  state.orbitShape = item.launch.orbitShape || null;
 
   const flightEnd = item.trajectory[item.trajectory.length - 1].t;
 

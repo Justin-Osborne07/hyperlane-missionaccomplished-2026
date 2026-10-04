@@ -36,6 +36,8 @@
 import Globe from 'globe.gl';
 import * as THREE from 'three';
 
+import { orbitElements, keplerState, heightAtAngle } from '../launches/orbits.js';
+
 
 // =============================================================================
 // SETTINGS YOU CAN TWEAK
@@ -44,9 +46,13 @@ import * as THREE from 'three';
 // Earth's radius in kilometres
 const EARTH_R_KM = 6371;
 
-// Multiplies altitude so a 200 km climb is actually visible.
+// Multiplies low altitudes so a 200 km climb is actually visible.
 // 1 = true scale (very flat), higher = more dramatic.
 const ALT_SCALE = 3;
+
+// Above this height, the exaggeration stops: extra height is drawn at true
+// scale, so high orbits (like GTO's 35,786 km) aren't drawn 3× too far out
+const ALT_SCALE_UNTIL_KM = 1000;
 
 // How long the ascent takes on screen (14 seconds)
 const PLAYBACK_MS = 14000;
@@ -70,9 +76,6 @@ const GLOW_PULSE = 0.15;
 // After stage separation, how many seconds (of flight time) the falling
 // stage takes to fade out completely
 const STAGE_FADE_S = 90;
-
-// Earth's gravity constant (km³/s²), for the orbit's real period and speed
-const MU_EARTH = 398600;
 
 // How long camera glides between views take
 const CAMERA_MOVE_MS = 1800;
@@ -152,9 +155,18 @@ const samePad = (a, b) =>
   a && b && (a.id ? a.id === b.id : a.lat === b.lat && a.lon === b.lon);
 
 // globe.gl measures altitude in "Earth radii" (1 = one Earth radius above the
-// surface), not kilometres. This converts km to that unit and applies the
-// exaggeration from ALT_SCALE.
-const altFromKm = (km) => (km / EARTH_R_KM) * ALT_SCALE;
+// surface), not kilometres. This converts km to that unit, exaggerating low
+// heights by ALT_SCALE and drawing anything above ALT_SCALE_UNTIL_KM at true
+// scale (so a 550 km orbit is clearly above a 420 km one, and GTO's top is
+// the right distance out).
+const altFromKm = (km) => {
+
+  const drawnKm = km <= ALT_SCALE_UNTIL_KM
+    ? km * ALT_SCALE
+    : ALT_SCALE_UNTIL_KM * ALT_SCALE + (km - ALT_SCALE_UNTIL_KM);
+
+  return drawnKm / EARTH_R_KM;
+};
 
 // lat/lon (degrees) <-> a direction from the Earth's centre [x, y, z]
 // (plain maths coordinates, used for the orbit calculations)
@@ -510,9 +522,16 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
   //   P × cos θ  +  D × sin θ
   // ===========================================================================
 
-  function computeOrbit(trajectory) {
+  // shape: { perigeeKm, apogeeKm } (see orbits.js). Without one, the orbit
+  // is a circle at the height where the trajectory ends.
+  function computeOrbit(trajectory, shape) {
 
     const last = trajectory[trajectory.length - 1];
+
+    // The orbit's lowest point (perigee) is where the trajectory ends
+    const orbitShape = shape
+      ? { perigeeKm: last.altKm, apogeeKm: Math.max(shape.apogeeKm, last.altKm) }
+      : { perigeeKm: last.altKm, apogeeKm: last.altKm };
     const prev = trajectory[trajectory.length - 2];
 
     const P = toXYZ(last.lat, last.lon);
@@ -526,21 +545,23 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
     const len = Math.hypot(D[0], D[1], D[2]) || 1;
     D = D.map((v) => v / len);
 
-    // How long one lap takes, from the orbit's size (Kepler's third law):
-    //   period = 2π × √(r³ / μ)
-    const r = EARTH_R_KM + last.altKm;
-
+    // How long one lap takes, from the orbit's size (Kepler's third law,
+    // see orbits.js). A circle has the same height all the way round; an
+    // ellipse (like GTO) climbs to its highest point on the far side.
     const orbit = {
       P: P,
       D: D,
       altKm: last.altKm,
-      periodS: 2 * Math.PI * Math.sqrt((r * r * r) / MU_EARTH),
+      shape: orbitShape,
+      periodS: orbitElements(orbitShape).periodS,
       ring: [],
     };
 
-    // Points every 2° all the way round, for drawing the ring
+    // Points every 2° all the way round, for drawing the ring, each at its
+    // own height
     for (let deg = 0; deg <= 360; deg += 2) {
-      orbit.ring.push({ ...orbitPoint(orbit, toRad(deg)), altKm: last.altKm });
+      const angle = toRad(deg);
+      orbit.ring.push({ ...orbitPoint(orbit, angle), altKm: heightAtAngle(orbitShape, angle) });
     }
 
     return orbit;
@@ -607,10 +628,11 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
       return positionAt(flight.trajectory, simT);
     }
 
-    // In orbit: how far round, as an angle
-    const theta = (2 * Math.PI * (simT - flight.tMax)) / flight.orbit.periodS;
+    // In orbit: where it is, from Kepler's law (orbits.js). On a stretched
+    // orbit like GTO it races low past perigee and crawls round the top.
+    const state = keplerState(flight.orbit.shape, simT - flight.tMax);
 
-    return { ...orbitPoint(flight.orbit, theta), alt: altFromKm(flight.orbit.altKm) };
+    return { ...orbitPoint(flight.orbit, state.angle), alt: altFromKm(state.altKm) };
   }
 
 
@@ -805,7 +827,7 @@ export function createGlobe(container, { onTick, onPadClick, onSpotClick, onCame
       launch: launch,
       trajectory: trajectory,
       tMax: trajectory[trajectory.length - 1].t,
-      orbit: computeOrbit(trajectory),
+      orbit: computeOrbit(trajectory, launch.orbitShape),
       color: color,
       rig: buildRig(rocket),
       glow: makeGlow(color),

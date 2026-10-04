@@ -9,10 +9,9 @@
 //      Every page refresh would use one up, so we save the results in the
 //      browser for 15 minutes and reuse them.
 //
-//   2. FILLING IN WHAT THE DASHBOARD NEEDS. Yosry's launch-api.js already
-//      turns the orbit name into an inclination (Polar 90°, SSO 98.1°,
-//      LEO 45.1°). For any other orbit (e.g. GTO) it gives none, so we use
-//      "due east" (see orbitDetails below).
+//   2. ESTIMATING EACH ORBIT. The API gives the orbit's type but not its
+//      exact tilt or height, so we estimate both from the mission (see
+//      estimateOrbit below), e.g. space station flights at 51.6°, 420 km.
 //
 //   3. MATCHING LAUNCH SITES. If a real launch is from one of Justin's launch
 //      sites (e.g. a pad at Cape Canaveral), we tag it with that site's id so
@@ -23,6 +22,7 @@
 import { fetchUpcomingLaunches } from './launch-api.js';
 import { launchPads } from './launch-pads.js';
 import { distanceKm } from './viewing-areas.js';
+import { HEIGHTS, GTO, circular, sunSyncInclination } from './orbits.js';
 
 
 // How long saved results stay fresh: 15 minutes, in milliseconds
@@ -39,38 +39,103 @@ const SAME_SITE_KM = 60;
 
 
 // =============================================================================
-// ORBIT DETAILS
+// ESTIMATING EACH LAUNCH'S ORBIT
 // -----------------------------------------------------------------------------
-// Yosry's launch-api.js gives each launch:
-//   orbit:        the orbit's name, e.g. "Polar Orbit"
-//   inclination:  90 / 98.1 / 45.1 for Polar / SSO / LEO, or null for others
+// The API says which TYPE of orbit a launch goes to (e.g. "Low Earth Orbit"),
+// but not its exact tilt (inclination) or height. Real launches of the same
+// type vary a lot, so we estimate from what we know about the mission:
 //
-// We add:
-//   key:  the short code the demo pickers use ('LEO' | 'Polar' | 'SSO')
-//   a fallback inclination for other orbits (e.g. GTO): launched due east,
-//   the most fuel-efficient direction, which gives an inclination equal to
-//   the launch site's latitude.
+//   Space station flights (Dragon, Cygnus, Soyuz...)  51.6°, ~420 km
+//   Starlink from Florida                              43°,   ~550 km
+//   Starlink from California                           53°,   ~550 km
+//   Amazon Kuiper                                      51.9°, ~630 km
+//   OneWeb                                             87.9°, ~1,200 km
+//   Sun-synchronous                                    ~97.8° (worked out
+//                                                      from the height), ~600 km
+//   Polar                                              90°,   ~800 km
+//   Geostationary transfer (GTO)                       launch site's latitude,
+//                                                      200 × 35,786 km ellipse
+//   Medium Earth orbit (GPS, Galileo)                  55°,   ~20,200 km
+//   Other Low Earth Orbit                              45.1° (challenge brief), ~400 km
+//   Unknown                                            due east, ~400 km
 //
 // Also: a rocket can't reach an inclination LOWER than its launch site's
-// latitude (e.g. 45.1° from a site at 45.3°N). In that case we use the
-// site's latitude, the closest it can get.
+// latitude, so every estimate is at least that.
+// These are estimates; the dashboard labels them "est.".
 // =============================================================================
 
+// The short codes the demo pickers use
 const ORBIT_KEYS = {
   'Low Earth Orbit': 'LEO',
   'Polar Orbit': 'Polar',
   'Sun-Synchronous Orbit': 'SSO',
+  'Geostationary Transfer Orbit': 'GTO',
 };
 
-function orbitDetails(orbitName, inclination, padLat) {
+const STATION_MISSION = /\b(iss|crs|crew-|cygnus|ng-\d|soyuz ms|progress ms|axiom|ax-\d|starliner|htv|dream chaser)/i;
 
-  // Rounded UP to 0.1°, so it never ends up a hair below the latitude
+function estimateOrbit(raw, padLat, padLon) {
+
+  const name = `${raw.name || ''} ${raw.rocket || ''}`;
+  const orbit = (raw.orbit || '').toLowerCase();
+
+  // Due east from the launch site: the lowest tilt it can reach.
+  // Rounded UP to 0.1°, so it never ends up a hair below the latitude.
   const dueEast = Math.ceil(Math.abs(padLat) * 10) / 10;
 
+  // Rough "is it in Florida / California" checks for Starlink
+  const fromFlorida = padLon > -82 && padLon < -79 && padLat > 27 && padLat < 30;
+
+  let key = ORBIT_KEYS[raw.orbit] || raw.orbit || 'Unknown';
+  let inclination;
+  let shape;
+
+  if (STATION_MISSION.test(name)) {
+    inclination = 51.6;
+    shape = circular(HEIGHTS.station);
+    key = 'LEO';
+  } else if (/starlink/i.test(name)) {
+    inclination = fromFlorida ? 43 : 53;
+    shape = circular(HEIGHTS.starlink);
+    key = 'LEO';
+  } else if (/kuiper/i.test(name)) {
+    inclination = 51.9;
+    shape = circular(630);
+    key = 'LEO';
+  } else if (/oneweb/i.test(name)) {
+    inclination = 87.9;
+    shape = circular(1200);
+    key = 'Polar';
+  } else if (orbit.includes('sun-synchronous')) {
+    shape = circular(HEIGHTS.sso);
+    inclination = sunSyncInclination(HEIGHTS.sso);
+    key = 'SSO';
+  } else if (orbit.includes('polar')) {
+    inclination = 90;
+    shape = circular(HEIGHTS.polar);
+    key = 'Polar';
+  } else if (orbit.includes('geostationary') || orbit.includes('geosynchronous') || orbit.includes('transfer')) {
+    inclination = dueEast;
+    shape = GTO;
+    key = 'GTO';
+  } else if (orbit.includes('medium')) {
+    inclination = 55;
+    shape = circular(HEIGHTS.meo);
+    key = 'MEO';
+  } else if (orbit.includes('low earth')) {
+    inclination = 45.1;
+    shape = circular(400);
+    key = 'LEO';
+  } else {
+    inclination = dueEast;
+    shape = circular(400);
+  }
+
   return {
-    key: ORBIT_KEYS[orbitName] || orbitName || 'Unknown',
-    label: orbitName || 'Unknown orbit',
-    inclination: inclination == null ? dueEast : Math.max(inclination, dueEast),
+    key,
+    label: raw.orbit || 'Unknown orbit',
+    inclination: Math.round(Math.max(inclination, dueEast) * 10) / 10,
+    shape,
   };
 }
 
@@ -98,7 +163,7 @@ function toDashboardLaunch(raw) {
     (p) => distanceKm(p.lat, p.lon, lat, lon) <= SAME_SITE_KM
   );
 
-  const orbit = orbitDetails(raw.orbit, raw.inclination, lat);
+  const orbit = estimateOrbit(raw, lat, lon);
 
   return {
     id: raw.id,
@@ -121,6 +186,12 @@ function toDashboardLaunch(raw) {
     orbit: orbit.key,
     orbitLabel: orbit.label,
     inclination: orbit.inclination,
+
+    // the orbit's height: { perigeeKm, apogeeKm } (see orbits.js)
+    orbitShape: orbit.shape,
+
+    // inclination and height are estimates for real launches (shown as "est.")
+    estimated: true,
 
     // Marks this as real data (not a demo launch)
     live: true,

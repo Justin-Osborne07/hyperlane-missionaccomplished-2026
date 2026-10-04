@@ -71,8 +71,12 @@ export function getTrajectory(launch) {
             distanceKm
         );
 
-        // Climbs steeply off the pad, then levels off near orbit
-        const altitudeKm = 200 * (1 - Math.pow(1 - fraction, 2.5));
+        // Climbs steeply off the pad, then levels off at the orbit's
+        // lowest height (perigee), or 200 km if the launch doesn't say.
+        // Capped at 1,000 km: rockets heading higher (like GPS at 20,200 km)
+        // reach a low orbit first, then coast up from there.
+        const finalAltKm = Math.min(launch.orbitShape?.perigeeKm ?? 200, 1000);
+        const altitudeKm = finalAltKm * (1 - Math.pow(1 - fraction, 2.5));
 
         trajectory.push({
             t: i * 5,
