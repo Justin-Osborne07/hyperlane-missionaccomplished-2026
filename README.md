@@ -37,8 +37,12 @@ We built Hyperlane for the **Mission Acomplished Hackathon** as a team of three,
 **Yosry — Live launch data**
 
 - Built the API module for fetching upcoming launches from The Space Devs.
-- Extracted mission names, launch windows and launch-pad coordinates for the dashboard.
+- Extracted mission names, launch windows and launch-pad coordinates for the oragnized it for later use dashboard.
+- using this data built a program that reads the inclination based of the orbit type then 
+calculates the launch azimuth and generated destinationpoints to build the rocket trajectory.
 - Provided the live launch data used by the upcoming-launch list and countdown.
+- Made a countdown system that shows whether the launch
+window is upcoming, currently open, or already closed.
 
 
 **Built with**
